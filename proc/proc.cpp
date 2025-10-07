@@ -41,7 +41,7 @@ enum MY_PROCESSOR_STATUS {
 
 struct my_processor_unit {
     StackHandler stk;
-    size_t registers[REGISTERS_COUNT];
+    double registers[REGISTERS_COUNT];
 
     size_t program_counter;
     size_t byte_code_len;
@@ -58,11 +58,6 @@ MY_PROCESSOR_STATUS my_processor_init(my_processor_unit ** proc) {
 
     STACK_ERRNO stk_err = SUCCESS;
     StackHandler new_stk = StackCtor(10, &stk_err);
-    // if (new_stk == NULL || stk_err != SUCCESS) {
-    //     ERROR_MSG("stk_err is %d\n", stk_err);
-    //     ERROR_MSG("new_stk at %p\n", new_stk);
-    //     return PROC_ERR_STACK;
-    // }
     new_proc->stk = new_stk;
     new_proc->status = PROC_OK;
 
@@ -95,9 +90,9 @@ MY_PROCESSOR_STATUS my_processor_dump(my_processor_unit * proc) {
 
     // === РЕГИСТРЫ ===
     printf(BOLD(YELLOW("REGISTERS:")) "\n");
-    const char* reg_names[] = {"RAX", "RBX", "RCX", "RDX", "RTX", "DED", "INSIDE", "CURVA"};
+    const char* reg_names[] = {"SHADOW", "RAX", "RBX", "RCX", "RDX", "RTX", "DED", "INSIDE", "CURVA"};
     for (int i = 0; i < REGISTERS_COUNT; ++i) {
-        printf("    " BRIGHT_GREEN("%-7s") " = " BRIGHT_YELLOW("%zu") " " BRIGHT_CYAN("[0x%016zx]") "\n",
+        printf("    " BRIGHT_GREEN("%-7s") " = " BRIGHT_YELLOW("%lg") " " BRIGHT_CYAN("[0x%016zx]") "\n",
                reg_names[i],
                proc->registers[i],
                proc->registers[i]);
@@ -172,12 +167,11 @@ MY_PROCESSOR_STATUS my_processor_dump(my_processor_unit * proc) {
 
     printf(BOLD(ON_BLUE("================================================")) "\n\n");
 
-    return PROC_OK; // TODO указать текущую команду байткода
+    return PROC_OK;
 }
 
 MY_PROCESSOR_STATUS my_processor_validator(my_processor_unit * proc) {
     if (proc == NULL)                                               {proc->status = PROC_ERR_NULLPTR_PASSED;    return PROC_ERR_NULLPTR_PASSED;}
-    // if (proc->stk == NULL || StackValidator(proc->stk) != SUCCESS)  {StackDump(proc->stk, StackValidator(proc->stk), "PIZDEC POLNY"); proc->status = PROC_ERR_STACK;             return PROC_ERR_STACK;}
     if (proc->program_counter>=proc->byte_code_len)                 {proc->status = PROC_ERR_CODE_OVERFLOW;     return PROC_ERR_CODE_OVERFLOW;}
     return PROC_OK;
 }
@@ -197,6 +191,81 @@ void my_processor_destroy(my_processor_unit ** proc) {
     *proc = NULL;
 }
 
+#define EXECUTE_PUSH(proc, stk)                                       \
+        {DEBUG_PRINT(BRIGHT_BLACK("Command is PUSH, "));              \
+        if ((proc)->program_counter + 1 + 1 > (proc)->byte_code_len) {\
+            (proc)->status = PROC_ERR_INVALID_BYTECODE;               \
+            return PROC_ERR_INVALID_BYTECODE;                         \
+        }                                                             \
+        double value = NAN;                                           \
+        value = (double) (proc)->byte_code[(proc)->program_counter + 1];\
+        DEBUG_PRINT(BRIGHT_BLACK("arg is %lg\n"), value);             \
+        StackPush((stk), value);}
+
+#define EXECUTE_PUSHR(proc, stk)                                            \
+        {DEBUG_PRINT(BRIGHT_BLACK("Command is PUSHR, "));                   \
+        if (proc->program_counter + 1 + 1 > proc->byte_code_len) {          \
+            proc->status = PROC_ERR_INVALID_BYTECODE;                       \
+            return PROC_ERR_INVALID_BYTECODE;                               \
+        }                                                                   \
+                                                                            \
+        double value = NAN;                                                 \
+                                                                            \
+        size_t register_number = proc->byte_code[proc->program_counter + 1];\
+        DEBUG_PRINT(BRIGHT_BLACK("register is %zu, "), register_number);    \
+                                                                            \
+        if (register_number > REGISTERS_COUNT) {                            \
+            proc->status = PROC_ERR_INVALID_BYTECODE;                       \
+            return PROC_ERR_INVALID_BYTECODE;                               \
+        }                                                                   \
+                                                                            \
+        value = (double) proc->registers[register_number];                  \
+        DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);                 \
+                                                                            \
+        StackPush(stk, value);}
+
+#define EXECUTE_POPR(proc, stk)                                             \
+        {DEBUG_PRINT(BRIGHT_BLACK("Command is POPR, "));                    \
+        if (proc->program_counter + 1 + 1 > proc->byte_code_len) {          \
+            proc->status = PROC_ERR_INVALID_BYTECODE;                       \
+            return PROC_ERR_INVALID_BYTECODE;                               \
+        }                                                                   \
+                                                                            \
+        double value = NAN;                                                 \
+                                                                            \
+        StackPop(stk, &value);                                              \
+                                                                            \
+        size_t register_number = proc->byte_code[proc->program_counter + 1];\
+        DEBUG_PRINT(BRIGHT_BLACK("register is %zu, "), register_number);    \
+                                                                            \
+        DEBUG_PRINT(BRIGHT_BLACK("arg is %lg, "), value);                   \
+        if (register_number > REGISTERS_COUNT) {                            \
+            proc->status = PROC_ERR_INVALID_BYTECODE;                       \
+            return PROC_ERR_INVALID_BYTECODE;                               \
+        }                                                                   \
+                                                                            \
+        proc->registers[register_number] = (size_t) value;                  \
+        DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);}
+
+#define COND_JMP_impl(proc, stk, opt)                                                       \
+        {double var1 = NAN, var2 = NAN;                                                     \
+        StackPop(stk, &var1);                                                               \
+        StackPop(stk, &var2);                                                               \
+        DEBUG_PRINT(BRIGHT_BLACK("Command is JB, var2 is %lg, var1 is %lg, new PC is %x\n"),\
+                    var2, var1, proc->byte_code[proc->program_counter + 1]);                \
+        if (var2 opt var1) {                                                                \
+            proc->program_counter = proc->byte_code[proc->program_counter + 1];             \
+            continue;                                                                       \
+        }}
+
+
+#define MATH_OPR_impl(proc, stk, opr)                           \
+        DEBUG_PRINT(BRIGHT_BLACK("Command is ADD\n"));          \
+        double var1 = NAN, var2 = NAN;                          \
+        StackPop(stk, &var1);                                   \
+        StackPop(stk, &var2);                                   \
+        StackPush(stk, var2 opr var1);
+
 MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
     Validate_processor_return_if_err(proc);
 
@@ -204,106 +273,72 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
 
     while (proc->program_counter < proc->byte_code_len && command != HLT) {
         my_processor_dump(proc);
+        getchar();
         command = proc->byte_code[proc->program_counter];
 
         StackHandler stk = proc->stk;
 
-        switch(command) {
-            case PUSH: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is PUSH,"));
-                if (proc->program_counter + 1 + 1 > proc->byte_code_len) {
-                    proc->status = PROC_ERR_INVALID_BYTECODE;
-                    return PROC_ERR_INVALID_BYTECODE;
-                }
-
-                double value = NAN;
-
-                value = (double) proc->byte_code[proc->program_counter + 1];
-                DEBUG_PRINT(BRIGHT_BLACK("arg is %lg"), value);
-
-                StackPush(stk, value);
-
+        switch (command) {
+            case PUSH:
+                EXECUTE_PUSH(proc, stk);
                 break;
-            }
-            case PUSHR: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is PUSHR,"));
-                if (proc->program_counter + 1 + 1 > proc->byte_code_len) {
-                    proc->status = PROC_ERR_INVALID_BYTECODE;
-                    return PROC_ERR_INVALID_BYTECODE;
-                }
 
-                double value = NAN;
-
-                size_t register_number = proc->byte_code[proc->program_counter + 1];
-                DEBUG_PRINT(BRIGHT_BLACK("register is %zu, "), register_number);
-
-                if (register_number > REGISTERS_COUNT) {
-                    proc->status = PROC_ERR_INVALID_BYTECODE;
-                    return PROC_ERR_INVALID_BYTECODE;
-                }
-
-                value = (double) proc->registers[register_number];
-                DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
-
-                StackPush(stk, value);
-
+            case PUSHR:
+                EXECUTE_PUSHR(proc, stk);
                 break;
-            }
+
             case POPR: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is POPR,"));
-                if (proc->program_counter + 1 + 1 > proc->byte_code_len) {
-                    proc->status = PROC_ERR_INVALID_BYTECODE;
-                    return PROC_ERR_INVALID_BYTECODE;
-                }
-
-                double value = NAN;
-
-                StackPop(stk, &value);
-
-                size_t register_number = proc->byte_code[proc->program_counter + 1];
-                DEBUG_PRINT(BRIGHT_BLACK("register is %zu, "), register_number);
-
-                DEBUG_PRINT(BRIGHT_BLACK("arg is %lg"), value);
-                if (register_number > REGISTERS_COUNT) {
-                    proc->status = PROC_ERR_INVALID_BYTECODE;
-                    return PROC_ERR_INVALID_BYTECODE;
-                }
-
-                proc->registers[register_number] = (size_t) value;
-                DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
+                EXECUTE_POPR(proc, stk);
 
                 break;
             }
-            case ADD: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is ADD\n"));
-                double var1 = NAN, var2 = NAN;
-                StackPop(stk, &var1);
-                StackPop(stk, &var2);
-                StackPush(stk, var2 + var1);
-                break;
+            case JMP: {
+                DEBUG_PRINT(BRIGHT_BLACK("Command is JMP, new PC is %x\n"), proc->byte_code[proc->program_counter + 1]);
+                proc->program_counter = proc->byte_code[proc->program_counter + 1];
+
+                continue;
             }
+            case JB:
+                COND_JMP_impl(proc, stk, <);
+
+                break;
+            case JBE:
+                COND_JMP_impl(proc, stk, <=);
+
+                break;
+            case JA:
+                COND_JMP_impl(proc, stk, >);
+
+                break;
+            case JAE:
+                COND_JMP_impl(proc, stk, >=);
+
+                break;
+            case JE:
+                COND_JMP_impl(proc, stk, ==);
+
+                break;
+            case JNE:
+                COND_JMP_impl(proc, stk, !=);
+
+                break;
+            case ADD:
+                MATH_OPR_impl(proc, stk, +);
+
+                break;
             case SUB: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is SUB\n"));
-                double var1 = NAN, var2 = NAN;
-                StackPop(stk, &var1);
-                StackPop(stk, &var2);
-                StackPush(stk, var2 - var1);
+                MATH_OPR_impl(proc, stk, -);
+
                 break;
             }
             case MUL: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is MUL\n"));
-                double var1 = NAN, var2 = NAN;
-                StackPop(stk, &var1);
-                StackPop(stk, &var2);
-                StackPush(stk, var2 * var1);
+                MATH_OPR_impl(proc, stk, *);
+
                 break;
             }
             case DIV: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is DIV\n"));
-                double var1 = NAN, var2 = NAN;
-                StackPop(stk, &var1);
-                StackPop(stk, &var2);
-                StackPush(stk, var2 / var1);
+                MATH_OPR_impl(proc, stk, /);
+
                 break;
             }
             case OUT: {

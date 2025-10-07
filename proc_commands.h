@@ -9,10 +9,10 @@
 #define ct(...)
 #endif // compilation
 
-#define PROC_COMANDS_VERSION 1.1
+#define PROC_COMANDS_VERSION 21
 
 struct proc_instruction_t {
-    char /*byte*/             byte_code;
+    size_t                    byte_code;
     ct(const char * const     name;)
     size_t                    byte_len; // Длина всей инструкции (со всеми аргументами) в байтах
 };
@@ -23,25 +23,35 @@ enum PROC_COMANDS {
     ADD, SUB, MUL, DIV,
     OUT, IN,
     PUSHR, POPR,
+    JMP, JB, JBE, JA, JAE, JE, JNE,
 };
 
 const int COMMAND_SPACE_MAX = 256;
 
 const proc_instruction_t PROC_INSTRUCTIONS[COMMAND_SPACE_MAX] = {
-    [HLT]   = {.byte_code = HLT ct(, .name= "HLT"), .byte_len = 1},
+    [HLT]   = {.byte_code = HLT ct(, .name = "HLT"), .byte_len = 1},
 
-    [PUSH]  = {.byte_code = PUSH ct(, .name= "PUSH"), .byte_len = 2},
+    [PUSH]  = {.byte_code = PUSH ct(, .name = "PUSH"), .byte_len = 2},
 
-    [ADD]   = {.byte_code = ADD ct(, .name= "ADD"), .byte_len = 1},
-    [SUB]   = {.byte_code = SUB ct(, .name= "SUB"), .byte_len = 1},
-    [MUL]   = {.byte_code = MUL ct(, .name= "MUL"), .byte_len = 1},
-    [DIV]   = {.byte_code = DIV ct(, .name= "DIV"), .byte_len = 1},
+    [ADD]   = {.byte_code = ADD ct(, .name = "ADD"), .byte_len = 1},
+    [SUB]   = {.byte_code = SUB ct(, .name = "SUB"), .byte_len = 1},
+    [MUL]   = {.byte_code = MUL ct(, .name = "MUL"), .byte_len = 1},
+    [DIV]   = {.byte_code = DIV ct(, .name = "DIV"), .byte_len = 1},
 
-    [OUT]   = {.byte_code = OUT ct(, .name= "OUT"), .byte_len = 1},
-    [IN]    = {.byte_code = IN  ct(, .name= "IN"),  .byte_len = 1},
+    [OUT]   = {.byte_code = OUT ct(, .name = "OUT"), .byte_len = 1},
+    [IN]    = {.byte_code = IN  ct(, .name = "IN"),  .byte_len = 1},
 
-    [PUSHR] = {.byte_code = PUSHR  ct(, .name= "PUSHR"), .byte_len = 2},
-    [POPR]  = {.byte_code = POPR   ct(, .name= "POPR"),  .byte_len = 2},
+    [PUSHR] = {.byte_code = PUSHR  ct(, .name = "PUSHR"), .byte_len = 2},
+    [POPR]  = {.byte_code = POPR   ct(, .name = "POPR"),  .byte_len = 2},
+
+    [JMP]   = {.byte_code = JMP  ct(, .name = "JMP"), .byte_len = 2},
+
+    [JB]    = {.byte_code = JB   ct(, .name = "JB"),  .byte_len = 2},
+    [JBE]   = {.byte_code = JBE  ct(, .name = "JBE"), .byte_len = 2},
+    [JA]    = {.byte_code = JA   ct(, .name = "JA"),  .byte_len = 2},
+    [JAE]   = {.byte_code = JAE  ct(, .name = "JAE"), .byte_len = 2},
+    [JE]    = {.byte_code = JE   ct(, .name = "JE"),  .byte_len = 2},
+    [JNE]   = {.byte_code = JNE  ct(, .name = "JNE"), .byte_len = 2},
 };
 
 int verify_proc_instructions();
