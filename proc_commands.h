@@ -1,0 +1,57 @@
+#ifndef PROC_COMMANDS_H
+#define PROC_COMMANDS_H
+
+#include <stdlib.h>
+
+#ifdef compilation
+#define ct(...) __VA_ARGS__ // compile_time
+#else
+#define ct(...)
+#endif // compilation
+
+#define PROC_COMANDS_VERSION 1.1
+
+struct proc_instruction_t {
+    char /*byte*/             byte_code;
+    ct(const char * const     name;)
+    size_t                    byte_len; // Длина всей инструкции (со всеми аргументами) в байтах
+};
+
+enum PROC_COMANDS {
+    HLT             = 100,
+    PUSH = 1,
+    ADD, SUB, MUL, DIV,
+    OUT, IN,
+    PUSHR, POPR,
+};
+
+const int COMMAND_SPACE_MAX = 256;
+
+const proc_instruction_t PROC_INSTRUCTIONS[COMMAND_SPACE_MAX] = {
+    [HLT]   = {.byte_code = HLT ct(, .name= "HLT"), .byte_len = 1},
+
+    [PUSH]  = {.byte_code = PUSH ct(, .name= "PUSH"), .byte_len = 2},
+
+    [ADD]   = {.byte_code = ADD ct(, .name= "ADD"), .byte_len = 1},
+    [SUB]   = {.byte_code = SUB ct(, .name= "SUB"), .byte_len = 1},
+    [MUL]   = {.byte_code = MUL ct(, .name= "MUL"), .byte_len = 1},
+    [DIV]   = {.byte_code = DIV ct(, .name= "DIV"), .byte_len = 1},
+
+    [OUT]   = {.byte_code = OUT ct(, .name= "OUT"), .byte_len = 1},
+    [IN]    = {.byte_code = IN  ct(, .name= "IN"),  .byte_len = 1},
+
+    [PUSHR] = {.byte_code = PUSHR  ct(, .name= "PUSHR"), .byte_len = 2},
+    [POPR]  = {.byte_code = POPR   ct(, .name= "POPR"),  .byte_len = 2},
+};
+
+int verify_proc_instructions();
+
+const int REGISTERS_COUNT = 9;
+
+enum REGISTERS_NAMES {
+    REG_RAX = 1, REG_RBX, REG_RCX, REG_RDX, REG_RTX, REG_DED, REG_INSIDE, REG_CURVA,
+};
+
+int get_register_by_name(const char * const name);
+
+#endif // PROC_COMMANDS_H
