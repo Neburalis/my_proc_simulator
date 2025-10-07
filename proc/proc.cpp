@@ -255,20 +255,29 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
     return PROC_OK;
 }
 
-#define EXECUTE_COND_JMP(proc, stk, opt)                                                    \
-        {double var1 = NAN, var2 = NAN;                                                     \
-        StackPop(stk, &var1);                                                               \
-        StackPop(stk, &var2);                                                               \
-        DEBUG_PRINT(BRIGHT_BLACK("Command is JB, var2 is %lg, var1 is %lg, new PC is %x\n"),\
-                    var2, var1, proc->byte_code[proc->program_counter + 1]);                \
-        if (var2 opt var1) {                                                                \
-            proc->program_counter = proc->byte_code[proc->program_counter + 1];             \
-            continue;                                                                       \
-        }}
+#define EXECUTE_COND_JMP_impl(name, opt)                                                        \
+    MY_PROCESSOR_STATUS EXECUTE_COND_J##name(my_processor_unit * proc, StackHandler stk) {    \
+        double var1 = NAN, var2 = NAN;                                                          \
+        StackPop(stk, &var1);                                                                   \
+        StackPop(stk, &var2);                                                                   \
+        DEBUG_PRINT(BRIGHT_BLACK("Command is JB, var2 is %lg, var1 is %lg, new PC is %x\n"),    \
+                    var2, var1, proc->byte_code[proc->program_counter + 1]);                    \
+        if (var2 opt var1) {                                                                    \
+            proc->program_counter = proc->byte_code[proc->program_counter + 1];                 \
+            return PROC_OK;                                                                     \
+        }                                                                                       \
+        return PROC_OK;                                                                         \
+    }
 
+EXECUTE_COND_JMP_impl(B, <)
+EXECUTE_COND_JMP_impl(BE, <=)
+EXECUTE_COND_JMP_impl(A, >)
+EXECUTE_COND_JMP_impl(AE, >=)
+EXECUTE_COND_JMP_impl(E, ==)
+EXECUTE_COND_JMP_impl(NE, !=)
 
 #define EXECUTE_MATH_OPR(proc, stk, opr)                        \
-        {DEBUG_PRINT(BRIGHT_BLACK("Command is ADD\n"));          \
+        {DEBUG_PRINT(BRIGHT_BLACK("Command is ADD\n"));         \
         double var1 = NAN, var2 = NAN;                          \
         StackPop(stk, &var1);                                   \
         StackPop(stk, &var2);                                   \
@@ -304,22 +313,22 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 continue;
             }
             case JB:
-                EXECUTE_COND_JMP(proc, stk, <);
+                EXECUTE_COND_JB(proc, stk);
                 break;
             case JBE:
-                EXECUTE_COND_JMP(proc, stk, <=);
+                EXECUTE_COND_JBE(proc, stk);
                 break;
             case JA:
-                EXECUTE_COND_JMP(proc, stk, >);
+                EXECUTE_COND_JA(proc, stk);
                 break;
             case JAE:
-                EXECUTE_COND_JMP(proc, stk, >=);
+                EXECUTE_COND_JAE(proc, stk);
                 break;
             case JE:
-                EXECUTE_COND_JMP(proc, stk, ==);
+                EXECUTE_COND_JE(proc, stk);
                 break;
             case JNE:
-                EXECUTE_COND_JMP(proc, stk, !=);
+                EXECUTE_COND_JNE(proc, stk);
                 break;
             case ADD:
                 EXECUTE_MATH_OPR(proc, stk, +);
