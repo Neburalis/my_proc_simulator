@@ -201,6 +201,8 @@ MY_PROCESSOR_STATUS EXECUTE_PUSH(my_processor_unit * proc, StackHandler stk) {
     value = (double) (proc)->byte_code[(proc)->program_counter + 1];
     DEBUG_PRINT(BRIGHT_BLACK("arg is %lg\n"), value);
     StackPush((stk), value);
+
+    proc->program_counter += PROC_INSTRUCTIONS[PUSH].byte_len;
     return PROC_OK;
 }
 
@@ -225,6 +227,8 @@ MY_PROCESSOR_STATUS EXECUTE_PUSHR(my_processor_unit * proc, StackHandler stk) {
     DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
 
     StackPush(stk, value);
+
+    proc->program_counter += PROC_INSTRUCTIONS[PUSHR].byte_len;
 
     return PROC_OK;
 }
@@ -252,11 +256,13 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
     proc->registers[register_number] = (size_t) value;
     DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
 
+    proc->program_counter += PROC_INSTRUCTIONS[POPR].byte_len;
+
     return PROC_OK;
 }
 
 #define EXECUTE_COND_JMP_impl(name, opt)                                                        \
-    MY_PROCESSOR_STATUS EXECUTE_COND_J##name(my_processor_unit * proc, StackHandler stk) {    \
+    MY_PROCESSOR_STATUS EXECUTE_COND_J##name(my_processor_unit * proc, StackHandler stk) {      \
         double var1 = NAN, var2 = NAN;                                                          \
         StackPop(stk, &var1);                                                                   \
         StackPop(stk, &var2);                                                                   \
@@ -266,6 +272,7 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
             proc->program_counter = proc->byte_code[proc->program_counter + 1];                 \
             return PROC_OK;                                                                     \
         }                                                                                       \
+        proc->program_counter += PROC_INSTRUCTIONS[J##name].byte_len;                           \
         return PROC_OK;                                                                         \
     }
 
@@ -276,12 +283,24 @@ EXECUTE_COND_JMP_impl(AE, >=)
 EXECUTE_COND_JMP_impl(E, ==)
 EXECUTE_COND_JMP_impl(NE, !=)
 
-#define EXECUTE_MATH_OPR(proc, stk, opr)                        \
-        {DEBUG_PRINT(BRIGHT_BLACK("Command is ADD\n"));         \
-        double var1 = NAN, var2 = NAN;                          \
-        StackPop(stk, &var1);                                   \
-        StackPop(stk, &var2);                                   \
-        StackPush(stk, var2 opr var1);}
+#define EXECUTE_MATH_OPR(proc, stk, opr)
+
+
+#define EXECUTE_MATH_OPR_impl(name, opr)                                                        \
+    MY_PROCESSOR_STATUS EXECUTE_MATH_##name(my_processor_unit * proc, StackHandler stk) {       \
+        DEBUG_PRINT(BRIGHT_BLACK("Command is " #name "\n"));                                    \
+        double var1 = NAN, var2 = NAN;                                                          \
+        StackPop(stk, &var1);                                                                   \
+        StackPop(stk, &var2);                                                                   \
+        StackPush(stk, var2 opr var1);                                                          \
+        proc->program_counter += 1;                                                             \
+        return PROC_OK;                                                                         \
+    }
+
+EXECUTE_MATH_OPR_impl(ADD, +)
+EXECUTE_MATH_OPR_impl(SUB, -)
+EXECUTE_MATH_OPR_impl(MUL, *)
+EXECUTE_MATH_OPR_impl(DIV, /)
 
 MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
     Validate_processor_return_if_err(proc);
@@ -305,11 +324,9 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
             case POPR:
                 OK(EXECUTE_POPR(proc, stk)) verified(return PROC_ERR_INVALID_BYTECODE);
                 break;
-
             case JMP: {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is JMP, new PC is %x\n"), proc->byte_code[proc->program_counter + 1]);
                 proc->program_counter = proc->byte_code[proc->program_counter + 1];
-
                 continue;
             }
             case JB:
@@ -331,22 +348,24 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 EXECUTE_COND_JNE(proc, stk);
                 break;
             case ADD:
-                EXECUTE_MATH_OPR(proc, stk, +);
+                EXECUTE_MATH_ADD(proc, stk);
                 break;
             case SUB:
-                EXECUTE_MATH_OPR(proc, stk, -);
+                EXECUTE_MATH_SUB(proc, stk);
                 break;
             case MUL:
-                EXECUTE_MATH_OPR(proc, stk, *);
+                EXECUTE_MATH_MUL(proc, stk);
                 break;
             case DIV:
-                EXECUTE_MATH_OPR(proc, stk, /);
+                EXECUTE_MATH_DIV(proc, stk);
                 break;
             case OUT: {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is OUT\n"));
                 double value = NAN;
                 StackPop(stk, &value);
                 printf("%lg\n", value);
+
+                proc->program_counter += PROC_INSTRUCTIONS[OUT].byte_len;
                 break;
             }
             case IN: {
@@ -354,6 +373,8 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 double value = NAN;
                 scanf("%lg", &value);
                 StackPush(stk, value);
+
+                proc->program_counter += PROC_INSTRUCTIONS[IN].byte_len;
                 break;
             }
             default:
@@ -362,7 +383,6 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 continue;
         }
 
-        proc->program_counter += PROC_INSTRUCTIONS[command].byte_len;
     }
 
     Validate_processor_return_if_err(proc);

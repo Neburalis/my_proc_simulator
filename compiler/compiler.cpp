@@ -19,14 +19,6 @@ using namespace mystr;
 #undef FREE
 #define FREE(ptr) free(ptr); ptr = NULL;
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#ifndef RED
-#define RED(x) "\033[31m" x "\033[0m"
-#endif
-
 int main(int argc, char *argv[]) {
     if (argc == 1) {
         fprintf(stderr, RED("error:") " no input files\n");
