@@ -223,7 +223,7 @@ MY_PROCESSOR_STATUS EXECUTE_PUSHR(my_processor_unit * proc, StackHandler stk) {
         return PROC_ERR_INVALID_BYTECODE;
     }
 
-    value = (double) proc->registers[register_number];
+    value = proc->registers[register_number];
     DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
 
     StackPush(stk, value);
@@ -253,7 +253,7 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
         return PROC_ERR_INVALID_BYTECODE;
     }
 
-    proc->registers[register_number] = (size_t) value;
+    proc->registers[register_number] = value;
     DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
 
     proc->program_counter += PROC_INSTRUCTIONS[POPR].byte_len;
@@ -266,7 +266,7 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
         double var1 = NAN, var2 = NAN;                                                          \
         StackPop(stk, &var1);                                                                   \
         StackPop(stk, &var2);                                                                   \
-        DEBUG_PRINT(BRIGHT_BLACK("Command is JB, var2 is %lg, var1 is %lg, new PC is %x\n"),    \
+        DEBUG_PRINT(BRIGHT_BLACK("Command is J" #name ", var2 is %lg, var1 is %lg, new PC is %x\n"),    \
                     var2, var1, proc->byte_code[proc->program_counter + 1]);                    \
         if (var2 opt var1) {                                                                    \
             proc->program_counter = proc->byte_code[proc->program_counter + 1];                 \
@@ -359,6 +359,14 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
             case DIV:
                 EXECUTE_MATH_DIV(proc, stk);
                 break;
+            case SQRT: {
+                DEBUG_PRINT(BRIGHT_BLACK("Command is SQRT\n"));
+                double var = NAN;
+                StackPop(stk, &var);
+                StackPush(stk, sqrt(var));
+                proc->program_counter += 1;
+                break;
+            }
             case OUT: {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is OUT\n"));
                 double value = NAN;
@@ -372,6 +380,8 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is IN\n"));
                 double value = NAN;
                 scanf("%lg", &value);
+                getchar();
+                // printf("Parsed value is [%lg]\n", value);
                 StackPush(stk, value);
 
                 proc->program_counter += PROC_INSTRUCTIONS[IN].byte_len;
