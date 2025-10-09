@@ -24,6 +24,7 @@ enum PROC_COMANDS {
     OUT, IN,
     PUSHR, POPR,
     JMP, JB, JBE, JA, JAE, JE, JNE,
+    SQRT,
 };
 
 const int COMMAND_SPACE_MAX = 256;
@@ -52,6 +53,8 @@ const proc_instruction_t PROC_INSTRUCTIONS[COMMAND_SPACE_MAX] = {
     [JAE]   = {.byte_code = JAE  ct(, .name = "JAE"), .byte_len = 2},
     [JE]    = {.byte_code = JE   ct(, .name = "JE"),  .byte_len = 2},
     [JNE]   = {.byte_code = JNE  ct(, .name = "JNE"), .byte_len = 2},
+
+    [SQRT]  = {.byte_code = SQRT ct(, .name = "SQRT"), .byte_len = 1},
 };
 
 int verify_proc_instructions();
