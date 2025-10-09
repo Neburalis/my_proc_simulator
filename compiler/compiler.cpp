@@ -45,6 +45,14 @@ const int MAX_INPUT_FILES = 16;
     printf("[%zu]\t (" #type ") \t\t [%x %x]\n", (*bytecode_size)-2, bytecode[(*bytecode_size)-2], bytecode[(*bytecode_size)-1]); \
 }
 
+#define no_args_proc_instruct_body(instruct)                                                    \
+    else if (strcmp(cmd, PROC_INSTRUCTIONS[instruct].name) == 0) {                              \
+        bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[instruct].byte_code);         \
+                                                                                                \
+        printf("[%zu]\t (" #instruct ") \t\t [%x]\n",                                           \
+            (*bytecode_size) - 1, PROC_INSTRUCTIONS[instruct].byte_code);                       \
+    }
+
 int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_size, ssize_t * labels) {
     char * line = buf;
     while (line < buf + buf_len) {
@@ -85,12 +93,6 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
                 bytecode[(*bytecode_size)++] = (ssize_t)(PROC_INSTRUCTIONS[PUSH].byte_code);
                 bytecode[(*bytecode_size)++] = (ssize_t)(value);
 
-                // for (size_t i = 0; i < bytecode_size; ++i) {
-                //     printf("%p", bytecode[i]);
-                // }
-                // printf("\n");
-                // printf("\n");
-
                 token = endptr;
             }
         } else if (strcmp(cmd, PROC_INSTRUCTIONS[PUSHR].name) == 0) {
@@ -127,55 +129,15 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
         conditional_jmp_body(JAE)
         conditional_jmp_body(JE)
         conditional_jmp_body(JNE)
-        else if (strcmp(cmd, PROC_INSTRUCTIONS[ADD].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[ADD].byte_code);
-
-            printf("[%zu]\t (ADD) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[ADD].byte_code);
-
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[SUB].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[SUB].byte_code);
-
-            printf("[%zu]\t (SUB) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[SUB].byte_code);
-
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[MUL].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[MUL].byte_code);
-
-            printf("[%zu]\t (MUL) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[MUL].byte_code);
-
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[DIV].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[DIV].byte_code);
-
-            printf("[%zu]\t (DIV) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[DIV].byte_code);
-
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[SQRT].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[SQRT].byte_code);
-
-            printf("[%zu]\t (SQRT) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[SQRT].byte_code);
-
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[OUT].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[OUT].byte_code);
-
-            printf("[%zu]\t (OUT) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[OUT].byte_code);
-
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[IN].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[IN].byte_code);
-
-            printf("[%zu]\t (IN) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[IN].byte_code);
-
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[HLT].name) == 0) {
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[HLT].byte_code);
-
-            printf("[%zu]\t (HLT) \t\t [%x]\n",
-                (*bytecode_size) - 1, PROC_INSTRUCTIONS[HLT].byte_code);
-        }
-
+        no_args_proc_instruct_body(ADD)
+        no_args_proc_instruct_body(SUB)
+        no_args_proc_instruct_body(MUL)
+        no_args_proc_instruct_body(DIV)
+        no_args_proc_instruct_body(SQRT)
+        no_args_proc_instruct_body(OUT)
+        no_args_proc_instruct_body(IN)
+        no_args_proc_instruct_body(HLT)
+        
         line += (strlen(line) + 1);
     }
     return 0;
@@ -229,7 +191,7 @@ int main(int argc, char * argv[]) {
     char * output_file = NULL;
     char * input_files[MAX_INPUT_FILES];
     int input_count = parse_args(argc, argv, &output_file, input_files);
-    
+
     printf("Output file: %s\n", output_file);
     printf("Input files:\n");
     for (int i = 0; i < input_count; i++) {
