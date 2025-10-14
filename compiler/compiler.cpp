@@ -59,9 +59,9 @@ using namespace mystr;
     bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, (ssize_t)(arg));                  \
     char cmd_repr[64];                                                                                  \
     snprintf(cmd_repr, sizeof(cmd_repr), "%s %zd", #CMD, (ssize_t)(arg));                               \
-    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%08zx") "\n",       \
+    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%016llx") "\n",     \
            pc, cmd_repr,                                                                                \
-           (size_t)PROC_INSTRUCTIONS[CMD].byte_code, (size_t)(arg));                                    \
+           (size_t)PROC_INSTRUCTIONS[CMD].byte_code, (int64_t)(arg));                                   \
 } while(0)
 
 COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t command_bytecode, size_t argc, ...) {
@@ -238,7 +238,7 @@ int main(int argc, char * argv[]) {
     }
 
     data.bytecode_capacity = 1024;
-    data.bytecode_size = 0;
+    data.bytecode_size = BYTECODE_SIGNATURE_SIZE;
     data.bytecode = (ssize_t *) calloc(data.bytecode_capacity, sizeof(ssize_t));
 
     if (data.bytecode == NULL) {
