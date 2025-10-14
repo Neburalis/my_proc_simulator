@@ -9,6 +9,8 @@
 #define ct(...)
 #endif // compilation
 
+const size_t BYTECODE_SIGNATURE_SIZE = 3; // PROC_SIGNATURE, PROC_COMANDS_VERSION, COUNT OF BYTES IN BYTECODE
+const ssize_t PROC_SIGNATURE = 0x314D4953434F5250; // PROCSIM1
 #define PROC_COMANDS_VERSION 21
 
 struct proc_instruction_t {

@@ -404,7 +404,7 @@ int main(int argc, char * argv[]) {
     OK(verify_proc_instructions()) verified(return -1);
 
     if (argc == 1) {
-        fprintf(stderr, "U must provide bytecode for execution");
+        ERROR_MSG("U must provide bytecode for execution");
         return -1;
     }
     size_t buf_len = 0;
@@ -418,8 +418,22 @@ int main(int argc, char * argv[]) {
     printf("status is %d\n", my_processor_init(&proc));
     printf("%p\n", proc);
 
-    proc->byte_code = buf;
-    proc->byte_code_len = buf_len;
+    if (buf[0] != PROC_SIGNATURE) {
+        ERROR_MSG("the file is not a processor executable");
+        return 1;
+    }
+
+    if (buf[1] != PROC_COMANDS_VERSION) {
+        ERROR_MSG("the file is an executable file of a different version of the processor");
+        return 2;
+    }
+
+    if (buf[2] != buf_len) {
+        ERROR_MSG("the executable file signature is corrupted");
+        return 3;
+    }
+
+    proc->program_counter = BYTECODE_SIGNATURE_SIZE;
 
     my_processor_dump(proc);
 

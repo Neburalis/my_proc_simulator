@@ -275,7 +275,7 @@ int main(int argc, char * argv[]) {
         printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
         printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
-        data.bytecode_size = 0;
+        data.bytecode_size = BYTECODE_SIGNATURE_SIZE;
 
         printf(BRIGHT_BLACK("[  PC]") "  " BOLD(BRIGHT_WHITE("%-30s")) "  "
             BOLD(BRIGHT_CYAN("%s")) " " BOLD(BLUE("  ARGS")) "\n",
@@ -286,6 +286,11 @@ int main(int argc, char * argv[]) {
 
         printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
     }
+
+    data.bytecode[0] = PROC_SIGNATURE;
+    data.bytecode[1] = PROC_COMANDS_VERSION;
+    data.bytecode[2] = data.bytecode_size;
+
     FILE *out = fopen(data.output_file, "wb");
     if (!out) {
         perror("fopen output file");
