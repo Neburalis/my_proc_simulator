@@ -4,3 +4,4 @@
 *.o
 *.dSYM
 .g+++_config
+*.bin
