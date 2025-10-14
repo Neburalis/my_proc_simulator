@@ -3,12 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #define _DEBUG
 #define tolerance_lvl 3
 
 #define compilation
 #include "proc_commands.h"
+#include "compiler.h"
 
 #include "io_utils.h"
 #include "stringNthong.h"
@@ -20,14 +22,11 @@ using namespace mystr;
 #undef FREE
 #define FREE(ptr) free(ptr); ptr = NULL;
 
-const int MAX_INPUT_FILES  = 16;
-const int MAX_LABELS_COUNT = 10;
-
 #define conditional_jmp_body(type)                                                                      \
-    else if (strcmp(cmd, PROC_INSTRUCTIONS[type].name) == 0) {                                          \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[type].name, ' ') == 0) {                                    \
         if (*arg == ':') {                                                                              \
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[type].byte_code);                 \
-            bytecode[(*bytecode_size)++] = labels[*(arg + 1) - '0'];                                    \
+            bytecode_add_command(                                                                       \
+                data, PROC_INSTRUCTIONS[type].byte_code, 1, data->labels[*(arg + 1) - '0']);            \
         }                                                                                               \
         else {                                                                                          \
             char * endptr = NULL;                                                                       \
@@ -40,35 +39,69 @@ const int MAX_LABELS_COUNT = 10;
                 break;                                                                                  \
             }                                                                                           \
                                                                                                         \
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[type].byte_code);                 \
-            bytecode[(*bytecode_size)++] = (size_t)(new_program_counter);                               \
+            bytecode_add_command(data, PROC_INSTRUCTIONS[type].byte_code, 1, new_program_counter);      \
         }                                                                                               \
-    printf("[%zu]\t (" #type " %zd) \t\t [%08x %08x]\n",                                                    \
-        (*bytecode_size)-2, bytecode[(*bytecode_size)-1], bytecode[(*bytecode_size)-2], bytecode[(*bytecode_size)-1]);                \
+    printf("[%zu]\t (" #type " %zd) \t\t [%08x %08x]\n",                                                \
+        data->bytecode_size-2, data->bytecode[data->bytecode_size-1],                                   \
+        data->bytecode[data->bytecode_size-2], data->bytecode[data->bytecode_size-1]);                  \
 }
 
 #define no_args_proc_instruct_body(instruct)                                                    \
-    else if (strcmp(cmd, PROC_INSTRUCTIONS[instruct].name) == 0) {                              \
-        bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[instruct].byte_code);         \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[instruct].name, ' ') == 0) {                        \
+        bytecode_add_command(data, PROC_INSTRUCTIONS[instruct].byte_code, 0);                   \
                                                                                                 \
-        printf("[%zu]\t (" #instruct ") \t\t [%08x]\n",                                           \
-            (*bytecode_size) - 1, PROC_INSTRUCTIONS[instruct].byte_code);                       \
+        printf("[%zu]\t (" #instruct ") \t\t [%08x]\n",                                         \
+            data->bytecode_size - 1, PROC_INSTRUCTIONS[instruct].byte_code);                    \
     }
 
-int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_size, ssize_t * labels) {
-    char * line = buf;
-    while (line < buf + buf_len) {
+COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t command_bytecode, size_t argc, ...) {
+    assert(data);
+    assert(data->bytecode);
+
+    if (data == NULL || data->bytecode == NULL) {
+        return COMPILER_ERRNO::COMPILER_PROVIDE_NULLPTR;
+    }
+
+    size_t required_space = 1 + argc;
+    if (data->bytecode_size + required_space > data->bytecode_capacity) {
+        size_t new_capacity = data->bytecode_capacity * 2;
+        ssize_t * new_bytecode = (ssize_t *) realloc(data->bytecode, new_capacity * sizeof(data->bytecode[0]));
+
+        if (new_bytecode == NULL) {
+            return COMPILER_ERRNO::COMPILER_CANNOT_REALLOCATE_MEMORY;
+        }
+        data->bytecode = new_bytecode;
+        data->bytecode_capacity = new_capacity;
+    }
+
+    data->bytecode[data->bytecode_size++] = command_bytecode;
+
+    if (argc > 0) {
+        va_list args;
+        va_start(args, argc);
+        for (size_t i = 0; i < argc; ++i) {
+            data->bytecode[data->bytecode_size++] = va_arg(args, ssize_t);
+        }
+        va_end(args);
+    }
+
+    return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
+}
+
+COMPILER_ERRNO compile(compiler_internal_data * data) {
+    char * line = data->input_text;
+    while (line < data->input_text + data->input_text_len) {
         char * space = strchr(line, ' ');
         char * cmd = line;
         char * arg = NULL;
         if (space) {
-            *space = '\0';
+            // *space = '\0';
             arg = space + 1;
         }
         if (*cmd == ':') { // label
-            labels[*(cmd + 1) - '0'] = *bytecode_size;
+            data->labels[*(cmd + 1) - '0'] = data->bytecode_size;
 
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[PUSH].name) == 0) {
+        } else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSH].name, ' ') == 0) {
             if (arg == NULL) {
                 ERROR_MSG("Команде PUSH было передано аргументов 0, а должно быть хотя бы 1");
                 break;
@@ -89,15 +122,16 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
                     break;
                 }
 
-                printf("[%zu]\t (PUSH %lg) \t\t [%08x %08zx]\n", (*bytecode_size),
+                printf("[%zu]\t (PUSH %lg) \t\t [%08x %08zx]\n", (data->bytecode_size),
                     value, PROC_INSTRUCTIONS[PUSH].byte_code, (ssize_t) value);
 
-                bytecode[(*bytecode_size)++] = (ssize_t)(PROC_INSTRUCTIONS[PUSH].byte_code);
-                bytecode[(*bytecode_size)++] = (ssize_t)(value);
+                bytecode_add_command(data, PROC_INSTRUCTIONS[PUSH].byte_code, 1, (ssize_t) value);
+                // bytecode[(*bytecode_size)++] = (ssize_t)(PROC_INSTRUCTIONS[PUSH].byte_code);
+                // bytecode[(*bytecode_size)++] = (ssize_t)(value);
 
                 token = endptr;
             }
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[PUSHR].name) == 0) {
+        } else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSHR].name, ' ') == 0) {
             size_t register_number = get_register_by_name(arg);
 
             if (register_number > REGISTERS_COUNT) {
@@ -105,24 +139,26 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
                 break;
             }
 
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[PUSHR].byte_code);
-            bytecode[(*bytecode_size)++] = (size_t)(register_number);
+            bytecode_add_command(data, PROC_INSTRUCTIONS[PUSHR].byte_code, 1, (ssize_t) register_number);
+            // bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[PUSHR].byte_code);
+            // bytecode[(*bytecode_size)++] = (size_t)(register_number);
 
             printf("[%zu]\t (PUSHR) \t\t [%08x %08x]\n",
-                (*bytecode_size) - 2, bytecode[(*bytecode_size) - 2], bytecode[(*bytecode_size) - 1]);
+                (data->bytecode_size) - 2, data->bytecode[(data->bytecode_size) - 2], data->bytecode[(data->bytecode_size) - 1]);
 
-        } else if (strcmp(cmd, PROC_INSTRUCTIONS[POPR].name) == 0) {
+        } else if (comp_to(cmd, PROC_INSTRUCTIONS[POPR].name, ' ') == 0) {
             size_t register_number = get_register_by_name(arg);
             if (register_number > REGISTERS_COUNT) {
                 ERROR_MSG("Неверный регистр в POPR: %zu", register_number);
                 break;
             }
 
-            bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[POPR].byte_code);
-            bytecode[(*bytecode_size)++] = (size_t)(register_number);
+            bytecode_add_command(data, PROC_INSTRUCTIONS[POPR].byte_code, 1, (ssize_t) register_number);
+            // bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[POPR].byte_code);
+            // bytecode[(*bytecode_size)++] = (size_t)(register_number);
 
             printf("[%zu]\t (POPR) \t\t [%08x %08x]\n",
-                *(bytecode_size) - 2, bytecode[(*bytecode_size) - 2], bytecode[(*bytecode_size) - 1]);
+                (data->bytecode_size) - 2, data->bytecode[(data->bytecode_size) - 2], data->bytecode[(data->bytecode_size) - 1]);
         }
         conditional_jmp_body(JMP)
         conditional_jmp_body(JB)
@@ -142,7 +178,7 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
 
         line += (strlen(line) + 1);
     }
-    return 0;
+    return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
 }
 
 int parse_args(int argc, char * argv[], char ** output_file, char * input_files[MAX_INPUT_FILES]) {
@@ -189,27 +225,6 @@ int parse_args(int argc, char * argv[], char ** output_file, char * input_files[
     return input_count;
 }
 
-struct {
-    char *      input_files[MAX_INPUT_FILES];
-    int         input_files_count;
-    char *      output_file;
-
-    char *      input_text;
-    size_t      input_text_len;
-
-    ssize_t     labels[MAX_LABELS_COUNT];
-
-    size_t      bytecode_capacity;
-    size_t      bytecode_size;
-    ssize_t *   bytecode;
-} typedef compiler_internal_data;
-
-#define init_compiler_internal_data(name)   \
-    compiler_internal_data name = {};       \
-    for (size_t i = 0; i < 10; ++i) {       \
-        name.labels[i] = (ssize_t) -1;      \
-    }
-
 int main(int argc, char * argv[]) {
     init_compiler_internal_data(data);
 
@@ -237,13 +252,12 @@ int main(int argc, char * argv[]) {
         return -1;
     }
 
-    char * copy_of_input_text = (char *) calloc(data.input_text_len, sizeof(data.input_text[0]));
-    memcpy(copy_of_input_text, data.input_text, data.input_text_len * sizeof(data.input_text[0]));
-
-    replace_needle_in_haystack(copy_of_input_text, data.input_text_len, '\n', '\0');
+    replace_needle_in_haystack(data.input_text, data.input_text_len, '\n', '\0');
     printf(BOLD(BRIGHT_WHITE("Первый проход:\n")));
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
-    compile(copy_of_input_text, data.input_text_len, data.bytecode, &data.bytecode_size, data.labels);
+
+    compile(&data); // Первый проход
+
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
     printf(BOLD(BRIGHT_WHITE("Labels:\n")));
@@ -251,13 +265,11 @@ int main(int argc, char * argv[]) {
         printf("[%zu] is %zd\n", i, data.labels[i]);
     }
 
-    data.bytecode_size = 0;
-    FREE(copy_of_input_text);
-
-    replace_needle_in_haystack(data.input_text, data.input_text_len, '\n', '\0');
     printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
-    compile(data.input_text, data.input_text_len, data.bytecode, &data.bytecode_size, data.labels);
+
+    compile(&data); // Второй проход
+
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
     FILE *out = fopen(data.output_file, "wb");
@@ -280,6 +292,6 @@ int main(int argc, char * argv[]) {
     printf("Bytecode written to " MAGENTA("%s") " (%zu bytes)\n", data.output_file, data.bytecode_size);
 
     FREE(data.bytecode);
-    FREE(data.input_text);j
+    FREE(data.input_text);
     return 0;
 }

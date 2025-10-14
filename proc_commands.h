@@ -12,13 +12,13 @@
 #define PROC_COMANDS_VERSION 21
 
 struct proc_instruction_t {
-    size_t                    byte_code;
+    ssize_t                   byte_code;
     ct(const char * const     name;)
     size_t                    byte_len; // Длина всей инструкции (со всеми аргументами) в байтах
 };
 
 enum PROC_COMANDS {
-    HLT             = 100,
+    HLT  = 100,
     PUSH = 1,
     ADD, SUB, MUL, DIV,
     OUT, IN,
