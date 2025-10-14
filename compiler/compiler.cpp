@@ -25,8 +25,7 @@ using namespace mystr;
 #define conditional_jmp_body(type)                                                                      \
     else if (comp_to(cmd, PROC_INSTRUCTIONS[type].name, ' ') == 0) {                                    \
         if (*arg == ':') {                                                                              \
-            bytecode_add_command(                                                                       \
-                data, PROC_INSTRUCTIONS[type].byte_code, 1, data->labels[*(arg + 1) - '0']);            \
+            bytecode_add_and_log_1(data, type, data->labels[*(arg + 1) - '0']);                         \
         }                                                                                               \
         else {                                                                                          \
             char * endptr = NULL;                                                                       \
@@ -39,20 +38,31 @@ using namespace mystr;
                 break;                                                                                  \
             }                                                                                           \
                                                                                                         \
-            bytecode_add_command(data, PROC_INSTRUCTIONS[type].byte_code, 1, new_program_counter);      \
+            bytecode_add_and_log_1(data, type, new_program_counter);                                    \
         }                                                                                               \
-    printf("[%zu]\t (" #type " %zd) \t\t [%08x %08x]\n",                                                \
-        data->bytecode_size-2, data->bytecode[data->bytecode_size-1],                                   \
-        data->bytecode[data->bytecode_size-2], data->bytecode[data->bytecode_size-1]);                  \
-}
-
-#define no_args_proc_instruct_body(instruct)                                                    \
-    else if (comp_to(cmd, PROC_INSTRUCTIONS[instruct].name, ' ') == 0) {                        \
-        bytecode_add_command(data, PROC_INSTRUCTIONS[instruct].byte_code, 0);                   \
-                                                                                                \
-        printf("[%zu]\t (" #instruct ") \t\t [%08x]\n",                                         \
-            data->bytecode_size - 1, PROC_INSTRUCTIONS[instruct].byte_code);                    \
     }
+
+#define no_args_proc_instruct_body(instruct)                                                            \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[instruct].name, ' ') == 0) {                                \
+        bytecode_add_and_log_0(data, instruct);                                                         \
+    }
+
+#define bytecode_add_and_log_0(data, CMD) do {                                                          \
+    size_t pc = (data)->bytecode_size;                                                                  \
+    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 0);                                  \
+    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") "\n",                         \
+           pc, #CMD, (size_t)PROC_INSTRUCTIONS[CMD].byte_code);                                         \
+} while (0)
+
+#define bytecode_add_and_log_1(data, CMD, arg) do {                                                     \
+    size_t pc = (data)->bytecode_size;                                                                  \
+    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, (ssize_t)(arg));                  \
+    char cmd_repr[64];                                                                                  \
+    snprintf(cmd_repr, sizeof(cmd_repr), "%s %zd", #CMD, (ssize_t)(arg));                               \
+    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%08zx") "\n",       \
+           pc, cmd_repr,                                                                                \
+           (size_t)PROC_INSTRUCTIONS[CMD].byte_code, (size_t)(arg));                                    \
+} while(0)
 
 COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t command_bytecode, size_t argc, ...) {
     assert(data);
@@ -122,12 +132,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
                     break;
                 }
 
-                printf("[%zu]\t (PUSH %lg) \t\t [%08x %08zx]\n", (data->bytecode_size),
-                    value, PROC_INSTRUCTIONS[PUSH].byte_code, (ssize_t) value);
-
-                bytecode_add_command(data, PROC_INSTRUCTIONS[PUSH].byte_code, 1, (ssize_t) value);
-                // bytecode[(*bytecode_size)++] = (ssize_t)(PROC_INSTRUCTIONS[PUSH].byte_code);
-                // bytecode[(*bytecode_size)++] = (ssize_t)(value);
+                bytecode_add_and_log_1(data, PUSH, value);
 
                 token = endptr;
             }
@@ -139,12 +144,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
                 break;
             }
 
-            bytecode_add_command(data, PROC_INSTRUCTIONS[PUSHR].byte_code, 1, (ssize_t) register_number);
-            // bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[PUSHR].byte_code);
-            // bytecode[(*bytecode_size)++] = (size_t)(register_number);
-
-            printf("[%zu]\t (PUSHR) \t\t [%08x %08x]\n",
-                (data->bytecode_size) - 2, data->bytecode[(data->bytecode_size) - 2], data->bytecode[(data->bytecode_size) - 1]);
+            bytecode_add_and_log_1(data, PUSHR, register_number);
 
         } else if (comp_to(cmd, PROC_INSTRUCTIONS[POPR].name, ' ') == 0) {
             size_t register_number = get_register_by_name(arg);
@@ -153,12 +153,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
                 break;
             }
 
-            bytecode_add_command(data, PROC_INSTRUCTIONS[POPR].byte_code, 1, (ssize_t) register_number);
-            // bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[POPR].byte_code);
-            // bytecode[(*bytecode_size)++] = (size_t)(register_number);
-
-            printf("[%zu]\t (POPR) \t\t [%08x %08x]\n",
-                (data->bytecode_size) - 2, data->bytecode[(data->bytecode_size) - 2], data->bytecode[(data->bytecode_size) - 1]);
+            bytecode_add_and_log_1(data, POPR, register_number);
         }
         conditional_jmp_body(JMP)
         conditional_jmp_body(JB)
@@ -256,6 +251,11 @@ int main(int argc, char * argv[]) {
     printf(BOLD(BRIGHT_WHITE("Первый проход:\n")));
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
+    printf(BRIGHT_BLACK("[  PC]") "  " BOLD(BRIGHT_WHITE("%-30s")) "  "
+           BOLD(BRIGHT_CYAN("%s")) " " BOLD(BLUE("  ARGS")) "\n",
+       "ASSEMBLY",
+       "BYTECODE");
+
     compile(&data); // Первый проход
 
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
@@ -267,6 +267,13 @@ int main(int argc, char * argv[]) {
 
     printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
+
+    data.bytecode_size = 0;
+
+    printf(BRIGHT_BLACK("[  PC]") "  " BOLD(BRIGHT_WHITE("%-30s")) "  "
+           BOLD(BRIGHT_CYAN("%s")) " " BOLD(BLUE("  ARGS")) "\n",
+       "ASSEMBLY",
+       "BYTECODE");
 
     compile(&data); // Второй проход
 
