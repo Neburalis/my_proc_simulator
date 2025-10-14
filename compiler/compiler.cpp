@@ -260,25 +260,32 @@ int main(int argc, char * argv[]) {
 
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
-    printf(BOLD(BRIGHT_WHITE("Labels:\n")));
+    bool is_second_pass_necessary = false;
+
     for (size_t i = 0; i < 10; ++i) {
-        printf("[%zu] is %zd\n", i, data.labels[i]);
+        if (data.labels[i] != -1) is_second_pass_necessary = true;
     }
 
-    printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
-    printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
+    if (is_second_pass_necessary) {
+        printf(BOLD(BRIGHT_WHITE("Labels:\n")));
+        for (size_t i = 0; i < 10; ++i) {
+            printf("[%zu] is %zd\n", i, data.labels[i]);
+        }
 
-    data.bytecode_size = 0;
+        printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
+        printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
-    printf(BRIGHT_BLACK("[  PC]") "  " BOLD(BRIGHT_WHITE("%-30s")) "  "
-           BOLD(BRIGHT_CYAN("%s")) " " BOLD(BLUE("  ARGS")) "\n",
-       "ASSEMBLY",
-       "BYTECODE");
+        data.bytecode_size = 0;
 
-    compile(&data); // Второй проход
+        printf(BRIGHT_BLACK("[  PC]") "  " BOLD(BRIGHT_WHITE("%-30s")) "  "
+            BOLD(BRIGHT_CYAN("%s")) " " BOLD(BLUE("  ARGS")) "\n",
+        "ASSEMBLY",
+        "BYTECODE");
 
-    printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
+        compile(&data); // Второй проход
 
+        printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
+    }
     FILE *out = fopen(data.output_file, "wb");
     if (!out) {
         perror("fopen output file");
