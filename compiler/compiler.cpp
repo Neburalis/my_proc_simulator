@@ -20,7 +20,8 @@ using namespace mystr;
 #undef FREE
 #define FREE(ptr) free(ptr); ptr = NULL;
 
-const int MAX_INPUT_FILES = 16;
+const int MAX_INPUT_FILES  = 16;
+const int MAX_LABELS_COUNT = 10;
 
 #define conditional_jmp_body(type)                                                                      \
     else if (strcmp(cmd, PROC_INSTRUCTIONS[type].name) == 0) {                                          \
@@ -42,14 +43,15 @@ const int MAX_INPUT_FILES = 16;
             bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[type].byte_code);                 \
             bytecode[(*bytecode_size)++] = (size_t)(new_program_counter);                               \
         }                                                                                               \
-    printf("[%zu]\t (" #type ") \t\t [%x %x]\n", (*bytecode_size)-2, bytecode[(*bytecode_size)-2], bytecode[(*bytecode_size)-1]); \
+    printf("[%zu]\t (" #type " %zd) \t\t [%08x %08x]\n",                                                    \
+        (*bytecode_size)-2, bytecode[(*bytecode_size)-1], bytecode[(*bytecode_size)-2], bytecode[(*bytecode_size)-1]);                \
 }
 
 #define no_args_proc_instruct_body(instruct)                                                    \
     else if (strcmp(cmd, PROC_INSTRUCTIONS[instruct].name) == 0) {                              \
         bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[instruct].byte_code);         \
                                                                                                 \
-        printf("[%zu]\t (" #instruct ") \t\t [%x]\n",                                           \
+        printf("[%zu]\t (" #instruct ") \t\t [%08x]\n",                                           \
             (*bytecode_size) - 1, PROC_INSTRUCTIONS[instruct].byte_code);                       \
     }
 
@@ -87,8 +89,8 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
                     break;
                 }
 
-                printf("[%zu]\t (PUSH %lg) \t\t [%x %zx]\n", (*bytecode_size)-2,
-                    value, PROC_INSTRUCTIONS[PUSH].byte_code, (ssize_t)value);
+                printf("[%zu]\t (PUSH %lg) \t\t [%08x %08zx]\n", (*bytecode_size),
+                    value, PROC_INSTRUCTIONS[PUSH].byte_code, (ssize_t) value);
 
                 bytecode[(*bytecode_size)++] = (ssize_t)(PROC_INSTRUCTIONS[PUSH].byte_code);
                 bytecode[(*bytecode_size)++] = (ssize_t)(value);
@@ -106,7 +108,7 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
             bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[PUSHR].byte_code);
             bytecode[(*bytecode_size)++] = (size_t)(register_number);
 
-            printf("[%zu]\t (PUSHR) \t\t [%x %x]\n",
+            printf("[%zu]\t (PUSHR) \t\t [%08x %08x]\n",
                 (*bytecode_size) - 2, bytecode[(*bytecode_size) - 2], bytecode[(*bytecode_size) - 1]);
 
         } else if (strcmp(cmd, PROC_INSTRUCTIONS[POPR].name) == 0) {
@@ -119,7 +121,7 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
             bytecode[(*bytecode_size)++] = (size_t)(PROC_INSTRUCTIONS[POPR].byte_code);
             bytecode[(*bytecode_size)++] = (size_t)(register_number);
 
-            printf("[%zu]\t (POPR) \t\t [%x %x]\n",
+            printf("[%zu]\t (POPR) \t\t [%08x %08x]\n",
                 *(bytecode_size) - 2, bytecode[(*bytecode_size) - 2], bytecode[(*bytecode_size) - 1]);
         }
         conditional_jmp_body(JMP)
@@ -137,7 +139,7 @@ int compile(char * buf, size_t buf_len, ssize_t * bytecode, size_t * bytecode_si
         no_args_proc_instruct_body(OUT)
         no_args_proc_instruct_body(IN)
         no_args_proc_instruct_body(HLT)
-        
+
         line += (strlen(line) + 1);
     }
     return 0;
@@ -187,76 +189,97 @@ int parse_args(int argc, char * argv[], char ** output_file, char * input_files[
     return input_count;
 }
 
-int main(int argc, char * argv[]) {
-    char * output_file = NULL;
-    char * input_files[MAX_INPUT_FILES];
-    int input_count = parse_args(argc, argv, &output_file, input_files);
+struct {
+    char *      input_files[MAX_INPUT_FILES];
+    int         input_files_count;
+    char *      output_file;
 
-    printf("Output file: %s\n", output_file);
-    printf("Input files:\n");
-    for (int i = 0; i < input_count; i++) {
-        printf("  %s\n", input_files[i]);
+    char *      input_text;
+    size_t      input_text_len;
+
+    ssize_t     labels[MAX_LABELS_COUNT];
+
+    size_t      bytecode_capacity;
+    size_t      bytecode_size;
+    ssize_t *   bytecode;
+} typedef compiler_internal_data;
+
+#define init_compiler_internal_data(name)   \
+    compiler_internal_data name = {};       \
+    for (size_t i = 0; i < 10; ++i) {       \
+        name.labels[i] = (ssize_t) -1;      \
     }
 
-    size_t input_text_len = 0;
-    char * input_text = read_file_to_buf(input_files[0], &input_text_len);
+int main(int argc, char * argv[]) {
+    init_compiler_internal_data(data);
+
+    data.input_files_count = parse_args(argc, argv, &data.output_file, data.input_files);
+
+    printf("Output file: %s\n", data.output_file);
+    printf("Input files:\n");
+    for (int i = 0; i < data.input_files_count; i++) {
+        printf("  %s\n", data.input_files[i]);
+    }
+
+    data.input_text = read_file_to_buf(data.input_files[0], &data.input_text_len);
     if (errno != 0) {
         printf("%s", strerror(errno));
         return -1;
     }
 
-    ssize_t labels[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    data.bytecode_capacity = 1024;
+    data.bytecode_size = 0;
+    data.bytecode = (ssize_t *) calloc(data.bytecode_capacity, sizeof(ssize_t));
 
-    size_t bytecode_capacity = 1024;
-    size_t bytecode_size = 0;
-    ssize_t * bytecode = (ssize_t *) calloc(bytecode_capacity, sizeof(ssize_t));
-    if (!bytecode) {
+    if (data.bytecode == NULL) {
         fprintf(stderr, RED("error:") " failed to allocate bytecode buffer\n");
-        free(input_text);
+        FREE(data.input_text);
         return -1;
     }
 
-    char * copy_of_input_text = (char *) calloc(input_text_len, sizeof(input_text[0]));
-    memcpy(copy_of_input_text, input_text, input_text_len * sizeof(input_text[0]));
+    char * copy_of_input_text = (char *) calloc(data.input_text_len, sizeof(data.input_text[0]));
+    memcpy(copy_of_input_text, data.input_text, data.input_text_len * sizeof(data.input_text[0]));
 
-    replace_needle_in_haystack(copy_of_input_text, input_text_len, '\n', '\0');
-    compile(copy_of_input_text, input_text_len, bytecode, &bytecode_size, labels);
+    replace_needle_in_haystack(copy_of_input_text, data.input_text_len, '\n', '\0');
+    printf(BOLD(BRIGHT_WHITE("Первый проход:\n")));
+    printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
+    compile(copy_of_input_text, data.input_text_len, data.bytecode, &data.bytecode_size, data.labels);
+    printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
+    printf(BOLD(BRIGHT_WHITE("Labels:\n")));
     for (size_t i = 0; i < 10; ++i) {
-        printf("[%zu] is %zd\n", i, labels[i]);
+        printf("[%zu] is %zd\n", i, data.labels[i]);
     }
 
-    bytecode_size = 0;
+    data.bytecode_size = 0;
     FREE(copy_of_input_text);
 
-    replace_needle_in_haystack(input_text, input_text_len, '\n', '\0');
-    compile(input_text, input_text_len, bytecode, &bytecode_size, labels);
+    replace_needle_in_haystack(data.input_text, data.input_text_len, '\n', '\0');
+    printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
+    printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
+    compile(data.input_text, data.input_text_len, data.bytecode, &data.bytecode_size, data.labels);
+    printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
-    FILE *out = fopen(output_file, "wb");
+    FILE *out = fopen(data.output_file, "wb");
     if (!out) {
         perror("fopen output file");
-        free(bytecode);
-        free(input_text);
+        FREE(data.bytecode);
+        FREE(data.input_text);
         return -1;
     }
 
-    for (size_t i = 0; i < bytecode_size; ++i) {
-        printf("%p", bytecode[i]);
-    }
-    printf("\n");
-
-    if (fwrite(bytecode, 8, bytecode_size, out) != bytecode_size) {
+    if (fwrite(data.bytecode, sizeof(data.bytecode[0]), data.bytecode_size, out) != data.bytecode_size) {
         fprintf(stderr, RED("error:") " failed to write bytecode to file\n");
         fclose(out);
-        free(bytecode);
-        free(input_text);
+        FREE(data.bytecode);
+        FREE(data.input_text);
         return -1;
     }
 
     fclose(out);
-    printf("Bytecode written to %s (%zu bytes)\n", output_file, bytecode_size);
+    printf("Bytecode written to " MAGENTA("%s") " (%zu bytes)\n", data.output_file, data.bytecode_size);
 
-    free(bytecode);
-    free(input_text);
+    FREE(data.bytecode);
+    FREE(data.input_text);j
     return 0;
 }
