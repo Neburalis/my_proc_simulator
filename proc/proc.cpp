@@ -39,13 +39,15 @@ enum MY_PROCESSOR_STATUS {
     PROC_ERR_INVALID_BYTECODE,
 };
 
+stack_element_t typedef bytecode_t;
+
 struct my_processor_unit {
     StackHandler stk;
     double registers[REGISTERS_COUNT];
 
     size_t program_counter;
-    size_t byte_code_len;
-    size_t * byte_code;
+    size_t bytecode_len;
+    bytecode_t * bytecode;
 
     MY_PROCESSOR_STATUS status;
 };
@@ -104,38 +106,38 @@ MY_PROCESSOR_STATUS my_processor_dump(my_processor_unit * proc) {
            proc->program_counter);
 
     // === ТЕКУЩАЯ КОМАНДА ===
-    if (proc->byte_code && proc->program_counter < proc->byte_code_len) {
-        uint8_t current_cmd = proc->byte_code[proc->program_counter];
+    if (proc->bytecode && proc->program_counter < proc->bytecode_len) {
+        size_t current_cmd = proc->bytecode[proc->program_counter].cmd;
         printf(BOLD(GREEN("CURRENT COMMAND:")) " " BRIGHT_YELLOW("0x%02x") " (at offset " BRIGHT_CYAN("%zu") ")\n",
                 current_cmd,
                 proc->program_counter);
-    } else if (proc->byte_code) {
+    } else if (proc->bytecode) {
         printf(BOLD(RED("CURRENT COMMAND:")) " " RED("OUT OF BOUNDS (PC = %zu, code length = %zu)") "\n",
-                proc->program_counter, proc->byte_code_len);
+                proc->program_counter, proc->bytecode_len);
     } else {
         printf(BOLD(RED("CURRENT COMMAND:")) " " RED("(byte code is NULL)") "\n");
     }
 
     // === БАЙТ-КОД ===
     printf(BOLD(CYAN("BYTE CODE:")) " ");
-    if (proc->byte_code) {
+    if (proc->bytecode) {
         printf("length = " BRIGHT_YELLOW("%zu") " bytes, at %p\n",
-                proc->byte_code_len, (void*)proc->byte_code);
+                proc->bytecode_len, (void*)proc->bytecode);
         printf("    " BRIGHT_CYAN("{"));
 
         size_t printed = 0;
 
-        while (printed < proc->byte_code_len) {
+        while (printed < proc->bytecode_len) {
             // Печатаем до 8 байт в строке
             size_t line_start = printed;
-            size_t line_end = (line_start + 8 > proc->byte_code_len) ? proc->byte_code_len : line_start + 8;
+            size_t line_end = (line_start + 8 > proc->bytecode_len) ? proc->bytecode_len : line_start + 8;
 
             if (printed > 0) {
                 printf("\n     "); // отступ для продолжения блока
             }
 
             for (size_t i = line_start; i < line_end; ++i) {
-                printf(" 0x%02x", proc->byte_code[i]);
+                printf(" 0x%02x", proc->bytecode[i]);
             }
 
             // Проверяем, есть ли в этой строке program_counter
@@ -151,7 +153,7 @@ MY_PROCESSOR_STATUS my_processor_dump(my_processor_unit * proc) {
             printed = line_end;
         }
 
-        if (proc->byte_code_len > 32) {
+        if (proc->bytecode_len > 32) {
             printf(" " BRIGHT_BLACK("..."));
         }
         printf(" " BRIGHT_CYAN("}"));
@@ -172,7 +174,7 @@ MY_PROCESSOR_STATUS my_processor_dump(my_processor_unit * proc) {
 
 MY_PROCESSOR_STATUS my_processor_validator(my_processor_unit * proc) {
     if (proc == NULL)                                               {proc->status = PROC_ERR_NULLPTR_PASSED;    return PROC_ERR_NULLPTR_PASSED;}
-    if (proc->program_counter>=proc->byte_code_len)                 {proc->status = PROC_ERR_CODE_OVERFLOW;     return PROC_ERR_CODE_OVERFLOW;}
+    if (proc->program_counter>=proc->bytecode_len)                  {proc->status = PROC_ERR_CODE_OVERFLOW;     return PROC_ERR_CODE_OVERFLOW;}
     return PROC_OK;
 }
 
@@ -180,8 +182,8 @@ void my_processor_destroy(my_processor_unit ** proc) {
     StackDtor((*proc)->stk);
 
     (*proc)->program_counter = 0;
-    (*proc)->byte_code_len = 0;
-    (*proc)->byte_code = NULL;
+    (*proc)->bytecode_len = 0;
+    (*proc)->bytecode = NULL;
 
     for (size_t i = 0; i < REGISTERS_COUNT; ++i) {
         (*proc)->registers[i] = 0;
@@ -193,13 +195,13 @@ void my_processor_destroy(my_processor_unit ** proc) {
 
 MY_PROCESSOR_STATUS EXECUTE_PUSH(my_processor_unit * proc, StackHandler stk) {
     DEBUG_PRINT(BRIGHT_BLACK("Command is PUSH, "));
-    if ((proc)->program_counter + 1 + 1 > (proc)->byte_code_len) {
+    if ((proc)->program_counter + 1 + 1 > (proc)->bytecode_len) {
         (proc)->status = PROC_ERR_INVALID_BYTECODE;
         return PROC_ERR_INVALID_BYTECODE;
     }
-    double value = NAN;
-    value = (double) (proc)->byte_code[(proc)->program_counter + 1];
-    DEBUG_PRINT(BRIGHT_BLACK("arg is %lg\n"), value);
+    bytecode_t value = {.arg = NAN};
+    value = (proc)->bytecode[(proc)->program_counter + 1];
+    DEBUG_PRINT(BRIGHT_BLACK("arg is %lg\n"), value.arg);
     StackPush((stk), value);
 
     proc->program_counter += PROC_INSTRUCTIONS[PUSH].byte_len;
@@ -208,14 +210,14 @@ MY_PROCESSOR_STATUS EXECUTE_PUSH(my_processor_unit * proc, StackHandler stk) {
 
 MY_PROCESSOR_STATUS EXECUTE_PUSHR(my_processor_unit * proc, StackHandler stk) {
     DEBUG_PRINT(BRIGHT_BLACK("Command is PUSHR, "));
-    if (proc->program_counter + 1 + 1 > proc->byte_code_len) {
+    if (proc->program_counter + 1 + 1 > proc->bytecode_len) {
         proc->status = PROC_ERR_INVALID_BYTECODE;
         return PROC_ERR_INVALID_BYTECODE;
     }
 
-    double value = NAN;
+    bytecode_t value = {.arg = NAN};
 
-    size_t register_number = proc->byte_code[proc->program_counter + 1];
+    size_t register_number = proc->bytecode[proc->program_counter + 1].cmd;
     DEBUG_PRINT(BRIGHT_BLACK("register is %zu, "), register_number);
 
     if (register_number > REGISTERS_COUNT) {
@@ -223,8 +225,8 @@ MY_PROCESSOR_STATUS EXECUTE_PUSHR(my_processor_unit * proc, StackHandler stk) {
         return PROC_ERR_INVALID_BYTECODE;
     }
 
-    value = proc->registers[register_number];
-    DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
+    value.arg = proc->registers[register_number];
+    DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value.arg);
 
     StackPush(stk, value);
 
@@ -235,16 +237,16 @@ MY_PROCESSOR_STATUS EXECUTE_PUSHR(my_processor_unit * proc, StackHandler stk) {
 
 MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
     DEBUG_PRINT(BRIGHT_BLACK("Command is POPR, "));
-    if (proc->program_counter + 1 + 1 > proc->byte_code_len) {
+    if (proc->program_counter + 1 + 1 > proc->bytecode_len) {
         proc->status = PROC_ERR_INVALID_BYTECODE;
         return PROC_ERR_INVALID_BYTECODE;
     }
 
-    double value = NAN;
+    bytecode_t value = {.arg = NAN};
 
     StackPop(stk, &value);
 
-    size_t register_number = proc->byte_code[proc->program_counter + 1];
+    size_t register_number = proc->bytecode[proc->program_counter + 1].cmd;
     DEBUG_PRINT(BRIGHT_BLACK("register is %zu, "), register_number);
 
     DEBUG_PRINT(BRIGHT_BLACK("arg is %lg, "), value);
@@ -253,7 +255,7 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
         return PROC_ERR_INVALID_BYTECODE;
     }
 
-    proc->registers[register_number] = value;
+    proc->registers[register_number] = value.arg;
     DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
 
     proc->program_counter += PROC_INSTRUCTIONS[POPR].byte_len;
@@ -263,13 +265,13 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
 
 #define EXECUTE_COND_JMP_impl(name, opt)                                                        \
     MY_PROCESSOR_STATUS EXECUTE_COND_J##name(my_processor_unit * proc, StackHandler stk) {      \
-        double var1 = NAN, var2 = NAN;                                                          \
+        bytecode_t var1 = {.arg = NAN}, var2 = {.arg = NAN};                                                          \
         StackPop(stk, &var1);                                                                   \
         StackPop(stk, &var2);                                                                   \
         DEBUG_PRINT(BRIGHT_BLACK("Command is J" #name ", var2 is %lg, var1 is %lg, new PC is %x\n"),    \
-                    var2, var1, proc->byte_code[proc->program_counter + 1]);                    \
-        if (var2 opt var1) {                                                                    \
-            proc->program_counter = proc->byte_code[proc->program_counter + 1];                 \
+                    var2.arg, var1.arg, proc->bytecode[proc->program_counter + 1].cmd);                    \
+        if (var2.arg opt var1.arg) {                                                                    \
+            proc->program_counter = proc->bytecode[proc->program_counter + 1].cmd;                 \
             return PROC_OK;                                                                     \
         }                                                                                       \
         proc->program_counter += PROC_INSTRUCTIONS[J##name].byte_len;                           \
@@ -283,26 +285,25 @@ EXECUTE_COND_JMP_impl(AE, >=)
 EXECUTE_COND_JMP_impl(E, ==)
 EXECUTE_COND_JMP_impl(NE, !=)
 
-#define EXECUTE_MATH_OPR(proc, stk, opr)
-
-
 #define EXECUTE_MATH_OPR_impl(name, opr)                                                        \
     MY_PROCESSOR_STATUS EXECUTE_MATH_##name(my_processor_unit * proc, StackHandler stk) {       \
         DEBUG_PRINT(BRIGHT_BLACK("Command is " #name "\n"));                                    \
-        double var1 = NAN, var2 = NAN;                                                          \
+        bytecode_t var1 = {.arg = NAN}, var2 = {.arg = NAN}, var = {.arg = NAN};                \
         StackPop(stk, &var1);                                                                   \
         StackPop(stk, &var2);                                                                   \
-        StackPush(stk, var2 opr var1);                                                          \
+        var.arg = var2.arg opr var1.arg;                                                        \
+        StackPush(stk, var);                                                                    \
         proc->program_counter += 1;                                                             \
         return PROC_OK;                                                                         \
     }
 
-#define EXECUTE_MATH_H_FUNC_impl(name, func)                                                        \
-    MY_PROCESSOR_STATUS EXECUTE_MATH_H_##name(my_processor_unit * proc, StackHandler stk) {       \
+#define EXECUTE_MATH_H_FUNC_impl(name, func)                                                    \
+    MY_PROCESSOR_STATUS EXECUTE_MATH_H_##name(my_processor_unit * proc, StackHandler stk) {     \
         DEBUG_PRINT(BRIGHT_BLACK("Command is " #name "\n"));                                    \
-        double var = NAN;                                                          \
-        StackPop(stk, &var);                                                                   \
-        StackPush(stk, func(var));                                                          \
+        bytecode_t var = {.arg = NAN}, new_var = {.arg = NAN};                                  \
+        StackPop(stk, &var);                                                                    \
+        new_var.arg = func(var.arg);                                                            \
+        StackPush(stk, new_var);                                                                \
         proc->program_counter += 1;                                                             \
         return PROC_OK;                                                                         \
     }
@@ -318,20 +319,22 @@ EXECUTE_MATH_H_FUNC_impl(COS, cos)
 
 MY_PROCESSOR_STATUS EXECUTE_MATH_MOD(my_processor_unit * proc, StackHandler stk) {
     DEBUG_PRINT(BRIGHT_BLACK("Command is MOD\n"));
-    double var1 = NAN, var2 = NAN;
+    bytecode_t var1 = {.arg = NAN}, var2 = {.arg = NAN}, var = {.arg = NAN};
     StackPop(stk, &var1);
     StackPop(stk, &var2);
-    StackPush(stk, (int64_t) var2 % (int64_t) var1);
+    var.arg = ((int64_t) (var2.arg)) % ((int64_t) (var1.arg));
+    StackPush(stk, var);
     proc->program_counter += 1;
     return PROC_OK;
 }
 
 MY_PROCESSOR_STATUS EXECUTE_MATH_IDIV(my_processor_unit * proc, StackHandler stk) {
-    DEBUG_PRINT(BRIGHT_BLACK("Command is MOD\n"));
-    double var1 = NAN, var2 = NAN;
+    DEBUG_PRINT(BRIGHT_BLACK("Command is INT_DIV\n"));
+    bytecode_t var1 = {.arg = NAN}, var2 = {.arg = NAN}, var = {.arg = NAN};
     StackPop(stk, &var1);
     StackPop(stk, &var2);
-    StackPush(stk, (int64_t) (var2 / var1));
+    var.arg = (int64_t) ((var2.arg) / (var1.arg));
+    StackPush(stk, var);
     proc->program_counter += 1;
     return PROC_OK;
 }
@@ -341,10 +344,10 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
 
     size_t command = 0;
 
-    while (proc->program_counter < proc->byte_code_len && command != HLT) {
+    while (proc->program_counter < proc->bytecode_len && command != HLT) {
         my_processor_dump(proc);
         getchar();
-        command = proc->byte_code[proc->program_counter];
+        command = proc->bytecode[proc->program_counter].cmd;
 
         StackHandler stk = proc->stk;
 
@@ -359,8 +362,8 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 OK(EXECUTE_POPR(proc, stk)) verified(return PROC_ERR_INVALID_BYTECODE);
                 break;
             case JMP: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is JMP, new PC is %x\n"), proc->byte_code[proc->program_counter + 1]);
-                proc->program_counter = proc->byte_code[proc->program_counter + 1];
+                DEBUG_PRINT(BRIGHT_BLACK("Command is JMP, new PC is %x\n"), proc->bytecode[proc->program_counter + 1]);
+                proc->program_counter = proc->bytecode[proc->program_counter + 1].cmd;
                 continue;
             }
             case JB:
@@ -410,17 +413,17 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 break;
             case OUT: {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is OUT\n"));
-                double value = NAN;
+                bytecode_t value = {.arg = NAN};
                 StackPop(stk, &value);
-                printf("%lg\n", value);
+                printf("%lg\n", value.arg);
 
                 proc->program_counter += PROC_INSTRUCTIONS[OUT].byte_len;
                 break;
             }
             case IN: {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is IN\n"));
-                double value = NAN;
-                scanf("%lg", &value);
+                bytecode_t value = {.arg = NAN};
+                scanf("%lg", &(value.arg));
                 getchar();
                 // printf("Parsed value is [%lg]\n", value);
                 StackPush(stk, value);
@@ -449,7 +452,7 @@ int main(int argc, char * argv[]) {
         return -1;
     }
     size_t buf_len = 0;
-    size_t * buf = read_file_to_size_t_buf(argv[1], &buf_len);
+    bytecode_t * buf = (bytecode_t *) read_file_to_size_t_buf(argv[1], &buf_len);
     if (errno != 0) {
         printf("%s", strerror(errno));
         return -1;
@@ -459,23 +462,23 @@ int main(int argc, char * argv[]) {
     printf("status is %d\n", my_processor_init(&proc));
     printf("%p\n", proc);
 
-    if (buf[0] != PROC_SIGNATURE) {
+    if (buf[0].cmd != PROC_SIGNATURE) {
         ERROR_MSG("the file is not a processor executable");
         return 1;
     }
 
-    if (buf[1] != PROC_COMANDS_VERSION) {
+    if (buf[1].cmd != PROC_COMANDS_VERSION) {
         ERROR_MSG("the file is an executable file of a different version of the processor");
         return 2;
     }
 
-    if (buf[2] != buf_len) {
+    if (buf[2].cmd != buf_len) {
         ERROR_MSG("the executable file signature is corrupted");
         return 3;
     }
 
-    proc->byte_code = buf;
-    proc->byte_code_len = buf_len;
+    proc->bytecode = buf;
+    proc->bytecode_len = buf_len;
     proc->program_counter = BYTECODE_SIGNATURE_SIZE;
 
     my_processor_dump(proc);
