@@ -297,10 +297,44 @@ EXECUTE_COND_JMP_impl(NE, !=)
         return PROC_OK;                                                                         \
     }
 
+#define EXECUTE_MATH_H_FUNC_impl(name, func)                                                        \
+    MY_PROCESSOR_STATUS EXECUTE_MATH_H_##name(my_processor_unit * proc, StackHandler stk) {       \
+        DEBUG_PRINT(BRIGHT_BLACK("Command is " #name "\n"));                                    \
+        double var = NAN;                                                          \
+        StackPop(stk, &var);                                                                   \
+        StackPush(stk, func(var));                                                          \
+        proc->program_counter += 1;                                                             \
+        return PROC_OK;                                                                         \
+    }
+
 EXECUTE_MATH_OPR_impl(ADD, +)
 EXECUTE_MATH_OPR_impl(SUB, -)
 EXECUTE_MATH_OPR_impl(MUL, *)
 EXECUTE_MATH_OPR_impl(DIV, /)
+
+EXECUTE_MATH_H_FUNC_impl(SQRT, sqrt)
+EXECUTE_MATH_H_FUNC_impl(SIN, sin)
+EXECUTE_MATH_H_FUNC_impl(COS, cos)
+
+MY_PROCESSOR_STATUS EXECUTE_MATH_MOD(my_processor_unit * proc, StackHandler stk) {
+    DEBUG_PRINT(BRIGHT_BLACK("Command is MOD\n"));
+    double var1 = NAN, var2 = NAN;
+    StackPop(stk, &var1);
+    StackPop(stk, &var2);
+    StackPush(stk, (int64_t) var2 % (int64_t) var1);
+    proc->program_counter += 1;
+    return PROC_OK;
+}
+
+MY_PROCESSOR_STATUS EXECUTE_MATH_IDIV(my_processor_unit * proc, StackHandler stk) {
+    DEBUG_PRINT(BRIGHT_BLACK("Command is MOD\n"));
+    double var1 = NAN, var2 = NAN;
+    StackPop(stk, &var1);
+    StackPop(stk, &var2);
+    StackPush(stk, (int64_t) (var2 / var1));
+    proc->program_counter += 1;
+    return PROC_OK;
+}
 
 MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
     Validate_processor_return_if_err(proc);
@@ -359,14 +393,21 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
             case DIV:
                 EXECUTE_MATH_DIV(proc, stk);
                 break;
-            case SQRT: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is SQRT\n"));
-                double var = NAN;
-                StackPop(stk, &var);
-                StackPush(stk, sqrt(var));
-                proc->program_counter += 1;
+            case SQRT:
+                EXECUTE_MATH_H_SQRT(proc, stk);
                 break;
-            }
+            case SIN:
+                EXECUTE_MATH_H_SIN(proc, stk);
+                break;
+            case COS:
+                EXECUTE_MATH_H_COS(proc, stk);
+                break;
+            case MOD:
+                EXECUTE_MATH_MOD(proc, stk);
+                break;
+            case IDIV:
+                EXECUTE_MATH_IDIV(proc, stk);
+                break;
             case OUT: {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is OUT\n"));
                 double value = NAN;
@@ -433,6 +474,8 @@ int main(int argc, char * argv[]) {
         return 3;
     }
 
+    proc->byte_code = buf;
+    proc->byte_code_len = buf_len;
     proc->program_counter = BYTECODE_SIGNATURE_SIZE;
 
     my_processor_dump(proc);

@@ -216,6 +216,10 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         no_args_proc_instruct_body(data, MUL)
         no_args_proc_instruct_body(data, DIV)
         no_args_proc_instruct_body(data, SQRT)
+        no_args_proc_instruct_body(data, SIN)
+        no_args_proc_instruct_body(data, COS)
+        no_args_proc_instruct_body(data, MOD)
+        no_args_proc_instruct_body(data, IDIV)
         no_args_proc_instruct_body(data, OUT)
         no_args_proc_instruct_body(data, IN)
         no_args_proc_instruct_body(data, HLT)
@@ -306,7 +310,7 @@ int main(int argc, char * argv[]) {
 
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
-    if (data.labels_size > 0) {
+    if (data.labels_size > 1) {
         printf(BOLD(BRIGHT_WHITE("Labels:\n")));
         for (size_t i = 0; i < data.labels_size; ++i) {
             printf("[%zu] name is %-10s, new_ps is %zd\n", i, data.labels[i].name, data.labels[i].program_counter);

@@ -11,7 +11,7 @@
 
 const size_t BYTECODE_SIGNATURE_SIZE = 3; // PROC_SIGNATURE, PROC_COMANDS_VERSION, COUNT OF BYTES IN BYTECODE
 const ssize_t PROC_SIGNATURE = 0x314D4953434F5250; // PROCSIM1
-#define PROC_COMANDS_VERSION 21
+#define PROC_COMANDS_VERSION 22
 
 struct proc_instruction_t {
     ssize_t                   byte_code;
@@ -26,7 +26,7 @@ enum PROC_COMANDS {
     OUT, IN,
     PUSHR, POPR,
     JMP, JB, JBE, JA, JAE, JE, JNE,
-    SQRT,
+    SQRT, SIN, COS, MOD, IDIV,
 };
 
 const int COMMAND_SPACE_MAX = 256;
@@ -57,6 +57,10 @@ const proc_instruction_t PROC_INSTRUCTIONS[COMMAND_SPACE_MAX] = {
     [JNE]   = {.byte_code = JNE  ct(, .name = "JNE"), .byte_len = 2},
 
     [SQRT]  = {.byte_code = SQRT ct(, .name = "SQRT"), .byte_len = 1},
+    [SIN]   = {.byte_code = SIN  ct(, .name = "SIN"),  .byte_len = 1},
+    [COS]   = {.byte_code = COS  ct(, .name = "COS"),  .byte_len = 1},
+    [MOD]   = {.byte_code = MOD  ct(, .name = "MOD"),  .byte_len = 1},
+    [IDIV]  = {.byte_code = IDIV ct(, .name = "IDIV"), .byte_len = 1},
 };
 
 int verify_proc_instructions();
