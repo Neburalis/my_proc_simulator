@@ -14,6 +14,13 @@ enum COMPILER_ERRNO {
     COMPILER_CANNOT_ALLOCATE_MEMORY   = 1,
     COMPILER_CANNOT_REALLOCATE_MEMORY = 2,
     COMPILER_PROVIDE_NULLPTR          = 3,
+    COMPILER_NO_SUCH_LABEL            = 4,
+    COMPILER_LABEL_ALREADY_EXIST      = 5,
+};
+
+struct label_t {
+    const char const * name;
+    size_t program_counter;
 };
 
 // Структура для внутренних данных компилятора
@@ -25,7 +32,9 @@ typedef struct {
     char *      input_text;
     size_t      input_text_len;
 
-    ssize_t     labels[MAX_LABELS_COUNT];
+    size_t      labels_capacity;
+    size_t      labels_size;
+    label_t *   labels;
 
     size_t      bytecode_capacity;
     size_t      bytecode_size;
@@ -33,11 +42,22 @@ typedef struct {
 } compiler_internal_data;
 
 // Макрос для инициализации структуры данных компилятора
-#define init_compiler_internal_data(name)   \
-    compiler_internal_data name = {};       \
-    for (size_t i = 0; i < 10; ++i) {       \
-        name.labels[i] = (ssize_t) -1;      \
-    }
+#define init_compiler_internal_data(NAME)                                   \
+    compiler_internal_data NAME = {};                                       \
+    NAME.bytecode_capacity = 1024;                                          \
+    NAME.bytecode_size = BYTECODE_SIGNATURE_SIZE;                           \
+    NAME.bytecode = (ssize_t *)                                             \
+                calloc(NAME.bytecode_capacity, sizeof(NAME.bytecode[0]));   \
+    NAME.labels_capacity = 1;                                               \
+    NAME.labels_size = 1;                                                   \
+    NAME.labels = (label_t *)                                               \
+                calloc(data.labels_capacity, sizeof(NAME.labels[0]));       \
+    NAME.labels[0] = {.name = "__start", .program_counter = BYTECODE_SIGNATURE_SIZE};
+
+#define dtor_compiler_internal_data(NAME)   \
+    FREE(NAME.input_text);                  \
+    FREE(NAME.labels);                      \
+    FREE(NAME.bytecode);
 
 // Функции компилятора
 /**
@@ -49,6 +69,10 @@ typedef struct {
  * @return код ошибки
  */
 COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t command_bytecode, size_t argc, ...);
+
+COMPILER_ERRNO add_label(compiler_internal_data * data, char * name, size_t new_pc);
+
+COMPILER_ERRNO get_label(compiler_internal_data * data, char * name, label_t * label);
 
 /**
  * Компилирует исходный код в байткод

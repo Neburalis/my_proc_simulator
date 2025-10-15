@@ -22,10 +22,19 @@ using namespace mystr;
 #undef FREE
 #define FREE(ptr) free(ptr); ptr = NULL;
 
-#define conditional_jmp_body(type)                                                                      \
-    else if (comp_to(cmd, PROC_INSTRUCTIONS[type].name, ' ') == 0) {                                    \
+#define conditional_jmp_body_return_if_err(data, TYPE)                                                  \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[TYPE].name, ' ') == 0) {                                    \
         if (*arg == ':') {                                                                              \
-            bytecode_add_and_log_1(data, type, data->labels[*(arg + 1) - '0']);                         \
+            label_t label = {};                                                                         \
+            COMPILER_ERRNO status = get_label(data, arg + 1, &label);                                   \
+            ssize_t new_pc = -1;                                                                        \
+                                                                                                        \
+            if (status == COMPILER_ERRNO::COMPILER_NO_PROBLEM)                                          \
+                new_pc = label.program_counter;                                                         \
+            else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)                                  \
+                return status;                                                                          \
+                                                                                                        \
+            bytecode_add_and_log_1(data, TYPE, new_pc);                                                 \
         }                                                                                               \
         else {                                                                                          \
             char * endptr = NULL;                                                                       \
@@ -38,13 +47,13 @@ using namespace mystr;
                 break;                                                                                  \
             }                                                                                           \
                                                                                                         \
-            bytecode_add_and_log_1(data, type, new_program_counter);                                    \
+            bytecode_add_and_log_1(data, TYPE, new_program_counter);                                    \
         }                                                                                               \
     }
 
-#define no_args_proc_instruct_body(instruct)                                                            \
-    else if (comp_to(cmd, PROC_INSTRUCTIONS[instruct].name, ' ') == 0) {                                \
-        bytecode_add_and_log_0(data, instruct);                                                         \
+#define no_args_proc_instruct_body(data, INSTRUCT)                                                      \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[INSTRUCT].name, ' ') == 0) {                                \
+        bytecode_add_and_log_0(data, INSTRUCT);                                                         \
     }
 
 #define bytecode_add_and_log_0(data, CMD) do {                                                          \
@@ -98,6 +107,46 @@ COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t comma
     return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
 }
 
+#define print_labels(data) \
+    printf(BRIGHT_BLACK("Running from %s:%d in func %s\n"), __FILE__, __LINE__, __PRETTY_FUNCTION__); \
+    print_labels_impl(data);
+
+void print_labels_impl(compiler_internal_data * data) {
+    printf("labels_size is \t%zu\n", data->labels_size);
+    printf("labels_capacity is \t%zu\n", data->labels_capacity);
+    for (size_t i = 0; i < data->labels_size; ++i) {
+        printf("[%zu] {.name = [%p]\"%s\", .program_counter = %zu}\n", i, data->labels[i].name, data->labels[i].name, data->labels[i].program_counter);
+    }
+}
+
+COMPILER_ERRNO get_label(compiler_internal_data * data, char * name, label_t * label) {
+    for (size_t i = 0; i < data->labels_size; ++i) {
+        if (strcmp(name, data->labels[i].name) == 0) {
+            if (label != NULL)
+                *label = data->labels[i];
+            return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
+        }
+    }
+    return COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL;
+}
+
+COMPILER_ERRNO add_label(compiler_internal_data * data, char * name, size_t new_pc) {
+    if (get_label(data, name, NULL) != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)
+        return COMPILER_ERRNO::COMPILER_LABEL_ALREADY_EXIST;
+
+    if (data->labels_size >= data->labels_capacity) {
+        size_t new_labels_capacity = data->labels_capacity * 2;
+        label_t * new_labels = (label_t *) realloc(data->labels, new_labels_capacity * sizeof(data->labels[0]));
+        if (new_labels == NULL)
+            return COMPILER_ERRNO::COMPILER_CANNOT_REALLOCATE_MEMORY;
+        data->labels_capacity = new_labels_capacity;
+        data->labels = new_labels;
+    }
+
+    data->labels[data->labels_size++] = {.name = name, .program_counter = new_pc};
+    return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
+}
+
 COMPILER_ERRNO compile(compiler_internal_data * data) {
     char * line = data->input_text;
     while (line < data->input_text + data->input_text_len) {
@@ -109,7 +158,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
             arg = space + 1;
         }
         if (*cmd == ':') { // label
-            data->labels[*(cmd + 1) - '0'] = data->bytecode_size;
+            add_label(data, (cmd + 1), data->bytecode_size);
 
         } else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSH].name, ' ') == 0) {
             if (arg == NULL) {
@@ -155,21 +204,21 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
             bytecode_add_and_log_1(data, POPR, register_number);
         }
-        conditional_jmp_body(JMP)
-        conditional_jmp_body(JB)
-        conditional_jmp_body(JBE)
-        conditional_jmp_body(JA)
-        conditional_jmp_body(JAE)
-        conditional_jmp_body(JE)
-        conditional_jmp_body(JNE)
-        no_args_proc_instruct_body(ADD)
-        no_args_proc_instruct_body(SUB)
-        no_args_proc_instruct_body(MUL)
-        no_args_proc_instruct_body(DIV)
-        no_args_proc_instruct_body(SQRT)
-        no_args_proc_instruct_body(OUT)
-        no_args_proc_instruct_body(IN)
-        no_args_proc_instruct_body(HLT)
+        conditional_jmp_body_return_if_err(data, JMP)
+        conditional_jmp_body_return_if_err(data, JB)
+        conditional_jmp_body_return_if_err(data, JBE)
+        conditional_jmp_body_return_if_err(data, JA)
+        conditional_jmp_body_return_if_err(data, JAE)
+        conditional_jmp_body_return_if_err(data, JE)
+        conditional_jmp_body_return_if_err(data, JNE)
+        no_args_proc_instruct_body(data, ADD)
+        no_args_proc_instruct_body(data, SUB)
+        no_args_proc_instruct_body(data, MUL)
+        no_args_proc_instruct_body(data, DIV)
+        no_args_proc_instruct_body(data, SQRT)
+        no_args_proc_instruct_body(data, OUT)
+        no_args_proc_instruct_body(data, IN)
+        no_args_proc_instruct_body(data, HLT)
 
         line += (strlen(line) + 1);
     }
@@ -234,16 +283,13 @@ int main(int argc, char * argv[]) {
     data.input_text = read_file_to_buf(data.input_files[0], &data.input_text_len);
     if (errno != 0) {
         printf("%s", strerror(errno));
+        dtor_compiler_internal_data(data);
         return -1;
     }
 
-    data.bytecode_capacity = 1024;
-    data.bytecode_size = BYTECODE_SIGNATURE_SIZE;
-    data.bytecode = (ssize_t *) calloc(data.bytecode_capacity, sizeof(ssize_t));
-
     if (data.bytecode == NULL) {
         fprintf(stderr, RED("error:") " failed to allocate bytecode buffer\n");
-        FREE(data.input_text);
+        dtor_compiler_internal_data(data);
         return -1;
     }
 
@@ -260,16 +306,10 @@ int main(int argc, char * argv[]) {
 
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
-    bool is_second_pass_necessary = false;
-
-    for (size_t i = 0; i < 10; ++i) {
-        if (data.labels[i] != -1) is_second_pass_necessary = true;
-    }
-
-    if (is_second_pass_necessary) {
+    if (data.labels_size > 0) {
         printf(BOLD(BRIGHT_WHITE("Labels:\n")));
-        for (size_t i = 0; i < 10; ++i) {
-            printf("[%zu] is %zd\n", i, data.labels[i]);
+        for (size_t i = 0; i < data.labels_size; ++i) {
+            printf("[%zu] name is %-10s, new_ps is %zd\n", i, data.labels[i].name, data.labels[i].program_counter);
         }
 
         printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
@@ -294,23 +334,20 @@ int main(int argc, char * argv[]) {
     FILE *out = fopen(data.output_file, "wb");
     if (!out) {
         perror("fopen output file");
-        FREE(data.bytecode);
-        FREE(data.input_text);
+        dtor_compiler_internal_data(data);
         return -1;
     }
 
     if (fwrite(data.bytecode, sizeof(data.bytecode[0]), data.bytecode_size, out) != data.bytecode_size) {
         fprintf(stderr, RED("error:") " failed to write bytecode to file\n");
         fclose(out);
-        FREE(data.bytecode);
-        FREE(data.input_text);
+        dtor_compiler_internal_data(data);
         return -1;
     }
 
     fclose(out);
     printf("Bytecode written to " MAGENTA("%s") " (%zu bytes)\n", data.output_file, data.bytecode_size);
 
-    FREE(data.bytecode);
-    FREE(data.input_text);
+    dtor_compiler_internal_data(data);
     return 0;
 }
