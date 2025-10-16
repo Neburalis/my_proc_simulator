@@ -49,6 +49,8 @@ struct my_processor_unit {
     size_t bytecode_len;
     bytecode_t * bytecode;
 
+    StackHandler call_stack;
+
     MY_PROCESSOR_STATUS status;
 };
 
@@ -59,8 +61,13 @@ MY_PROCESSOR_STATUS my_processor_init(my_processor_unit ** proc) {
     }
 
     STACK_ERRNO stk_err = SUCCESS;
-    StackHandler new_stk = StackCtor(10, &stk_err);
+    StackHandler new_stk = StackCtor(8, &stk_err);
     new_proc->stk = new_stk;
+
+    stk_err = SUCCESS;
+    StackHandler new_call_stk = StackCtor(4, &stk_err);
+    new_proc->call_stack = new_call_stk;
+
     new_proc->status = PROC_OK;
 
     *proc = new_proc;
@@ -88,7 +95,8 @@ MY_PROCESSOR_STATUS my_processor_dump(my_processor_unit * proc) {
     // Заголовок
     printf(BOLD(ON_BLUE("================== PROCESSOR DUMP ==================")) "\n");
 
-    StackDump(proc->stk, SUCCESS, "dump from processor");
+    StackDump(proc->stk, SUCCESS, "stack dump from processor");
+    StackDump(proc->call_stack, SUCCESS, "call_stack dump from processor");
 
     // === РЕГИСТРЫ ===
     printf(BOLD(YELLOW("REGISTERS:")) "\n");
@@ -137,7 +145,10 @@ MY_PROCESSOR_STATUS my_processor_dump(my_processor_unit * proc) {
             }
 
             for (size_t i = line_start; i < line_end; ++i) {
-                printf(" 0x%02x", proc->bytecode[i]);
+                if (i == 0)
+                    printf(" SIGN");
+                else
+                    printf(" 0x%02x", proc->bytecode[i]);
             }
 
             // Проверяем, есть ли в этой строке program_counter
@@ -180,6 +191,7 @@ MY_PROCESSOR_STATUS my_processor_validator(my_processor_unit * proc) {
 
 void my_processor_destroy(my_processor_unit ** proc) {
     StackDtor((*proc)->stk);
+    StackDtor((*proc)->call_stack);
 
     (*proc)->program_counter = 0;
     (*proc)->bytecode_len = 0;
@@ -268,7 +280,7 @@ MY_PROCESSOR_STATUS EXECUTE_POPR(my_processor_unit * proc, StackHandler stk) {
         bytecode_t var1 = {.arg = NAN}, var2 = {.arg = NAN};                                                          \
         StackPop(stk, &var1);                                                                   \
         StackPop(stk, &var2);                                                                   \
-        DEBUG_PRINT(BRIGHT_BLACK("Command is J" #name ", var2 is %lg, var1 is %lg, new PC is %x\n"),    \
+        DEBUG_PRINT(BRIGHT_BLACK("Command is J" #name ", var2 is %lg, var1 is %lg, new PC is %zu\n"),    \
                     var2.arg, var1.arg, proc->bytecode[proc->program_counter + 1].cmd);                    \
         if (var2.arg opt var1.arg) {                                                                    \
             proc->program_counter = proc->bytecode[proc->program_counter + 1].cmd;                 \
@@ -317,7 +329,7 @@ EXECUTE_MATH_H_FUNC_impl(SQRT, sqrt)
 EXECUTE_MATH_H_FUNC_impl(SIN, sin)
 EXECUTE_MATH_H_FUNC_impl(COS, cos)
 
-MY_PROCESSOR_STATUS EXECUTE_MATH_MOD(my_processor_unit * proc, StackHandler stk) {
+MY_PROCESSOR_STATUS execute_math_mod(my_processor_unit * proc, StackHandler stk) {
     DEBUG_PRINT(BRIGHT_BLACK("Command is MOD\n"));
     bytecode_t var1 = {.arg = NAN}, var2 = {.arg = NAN}, var = {.arg = NAN};
     StackPop(stk, &var1);
@@ -328,7 +340,7 @@ MY_PROCESSOR_STATUS EXECUTE_MATH_MOD(my_processor_unit * proc, StackHandler stk)
     return PROC_OK;
 }
 
-MY_PROCESSOR_STATUS EXECUTE_MATH_IDIV(my_processor_unit * proc, StackHandler stk) {
+MY_PROCESSOR_STATUS execute_math_idiv(my_processor_unit * proc, StackHandler stk) {
     DEBUG_PRINT(BRIGHT_BLACK("Command is INT_DIV\n"));
     bytecode_t var1 = {.arg = NAN}, var2 = {.arg = NAN}, var = {.arg = NAN};
     StackPop(stk, &var1);
@@ -336,6 +348,28 @@ MY_PROCESSOR_STATUS EXECUTE_MATH_IDIV(my_processor_unit * proc, StackHandler stk
     var.arg = (int64_t) ((var2.arg) / (var1.arg));
     StackPush(stk, var);
     proc->program_counter += 1;
+    return PROC_OK;
+}
+
+MY_PROCESSOR_STATUS execute_call(my_processor_unit * proc) {
+    DEBUG_PRINT(BRIGHT_BLACK("Command is CALL, now PC is %zu, new PC is %zu\n"),
+        proc->program_counter, proc->bytecode[proc->program_counter + 1]);
+
+    bytecode_t return_pc = {.cmd = proc->program_counter + PROC_INSTRUCTIONS[CALL].byte_len};
+    StackPush(proc->call_stack, return_pc);
+
+    proc->program_counter = proc->bytecode[proc->program_counter + 1].cmd;
+    return PROC_OK;
+}
+
+MY_PROCESSOR_STATUS execute_ret(my_processor_unit * proc) {
+    bytecode_t return_pc = {};
+    StackPop(proc->call_stack, &return_pc);
+
+    DEBUG_PRINT(BRIGHT_BLACK("Command is RET, now PC is %zu, jump PC is %zu\n"),
+        proc->program_counter, return_pc.cmd);
+
+    proc->program_counter = return_pc.cmd;
     return PROC_OK;
 }
 
@@ -362,9 +396,9 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 OK(EXECUTE_POPR(proc, stk)) verified(return PROC_ERR_INVALID_BYTECODE);
                 break;
             case JMP: {
-                DEBUG_PRINT(BRIGHT_BLACK("Command is JMP, new PC is %x\n"), proc->bytecode[proc->program_counter + 1]);
+                DEBUG_PRINT(BRIGHT_BLACK("Command is JMP, new PC is %zu\n"), proc->bytecode[proc->program_counter + 1]);
                 proc->program_counter = proc->bytecode[proc->program_counter + 1].cmd;
-                continue;
+                break;
             }
             case JB:
                 EXECUTE_COND_JB(proc, stk);
@@ -406,10 +440,16 @@ MY_PROCESSOR_STATUS execute_bytecode(my_processor_unit * proc) {
                 EXECUTE_MATH_H_COS(proc, stk);
                 break;
             case MOD:
-                EXECUTE_MATH_MOD(proc, stk);
+                execute_math_mod(proc, stk);
                 break;
             case IDIV:
-                EXECUTE_MATH_IDIV(proc, stk);
+                execute_math_idiv(proc, stk);
+                break;
+            case CALL:
+                execute_call(proc);
+                break;
+            case RET:
+                execute_ret(proc);
                 break;
             case OUT: {
                 DEBUG_PRINT(BRIGHT_BLACK("Command is OUT\n"));

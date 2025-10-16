@@ -3,6 +3,9 @@
 
 #include <stddef.h>
 #include <sys/types.h>
+#include "stack.h"
+
+stack_element_t typedef bytecode_t;
 
 // Константы
 static const int MAX_INPUT_FILES  = 16;
@@ -16,6 +19,7 @@ enum COMPILER_ERRNO {
     COMPILER_PROVIDE_NULLPTR          = 3,
     COMPILER_NO_SUCH_LABEL            = 4,
     COMPILER_LABEL_ALREADY_EXIST      = 5,
+    COMPILER_INVALID_ARG_TYPE         = 6,
 };
 
 struct label_t {
@@ -38,7 +42,7 @@ typedef struct {
 
     size_t      bytecode_capacity;
     size_t      bytecode_size;
-    ssize_t *   bytecode;
+    bytecode_t *   bytecode;
 } compiler_internal_data;
 
 // Макрос для инициализации структуры данных компилятора
@@ -46,7 +50,7 @@ typedef struct {
     compiler_internal_data NAME = {};                                       \
     NAME.bytecode_capacity = 1024;                                          \
     NAME.bytecode_size = BYTECODE_SIGNATURE_SIZE;                           \
-    NAME.bytecode = (ssize_t *)                                             \
+    NAME.bytecode = (bytecode_t *)                                          \
                 calloc(NAME.bytecode_capacity, sizeof(NAME.bytecode[0]));   \
     NAME.labels_capacity = 1;                                               \
     NAME.labels_size = 1;                                                   \
@@ -68,7 +72,7 @@ typedef struct {
  * @param ... - аргументы команды
  * @return код ошибки
  */
-COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t command_bytecode, size_t argc, ...);
+COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, size_t command_bytecode, size_t argc, ...);
 
 COMPILER_ERRNO add_label(compiler_internal_data * data, char * name, size_t new_pc);
 

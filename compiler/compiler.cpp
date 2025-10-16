@@ -20,7 +20,7 @@
 using namespace mystr;
 
 #undef FREE
-#define FREE(ptr) free(ptr); ptr = NULL;
+#define FREE(ptr) do {free((ptr)); (ptr) = NULL;} while(0)
 
 #define conditional_jmp_body_return_if_err(data, TYPE)                                                  \
     else if (comp_to(cmd, PROC_INSTRUCTIONS[TYPE].name, ' ') == 0) {                                    \
@@ -34,7 +34,7 @@ using namespace mystr;
             else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)                                  \
                 return status;                                                                          \
                                                                                                         \
-            bytecode_add_and_log_1(data, TYPE, new_pc);                                                 \
+            bytecode_add_and_log_1_int(data, TYPE, new_pc);                                             \
         }                                                                                               \
         else {                                                                                          \
             char * endptr = NULL;                                                                       \
@@ -47,7 +47,7 @@ using namespace mystr;
                 break;                                                                                  \
             }                                                                                           \
                                                                                                         \
-            bytecode_add_and_log_1(data, TYPE, new_program_counter);                                    \
+            bytecode_add_and_log_1_int(data, TYPE, new_program_counter);                                \
         }                                                                                               \
     }
 
@@ -63,17 +63,34 @@ using namespace mystr;
            pc, #CMD, (size_t)PROC_INSTRUCTIONS[CMD].byte_code);                                         \
 } while (0)
 
-#define bytecode_add_and_log_1(data, CMD, arg) do {                                                     \
+#define bytecode_add_and_log_1_int(data, CMD, arg) do {                                                 \
     size_t pc = (data)->bytecode_size;                                                                  \
-    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, (ssize_t)(arg));                  \
-    char cmd_repr[64];                                                                                  \
-    snprintf(cmd_repr, sizeof(cmd_repr), "%s %zd", #CMD, (ssize_t)(arg));                               \
+    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_INT, (arg));                  \
+    char cmd_repr[64] = "";                                                                             \
+    snprintf(cmd_repr, sizeof(cmd_repr), "%s %zd", #CMD, (arg));                                        \
     printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%016llx") "\n",     \
            pc, cmd_repr,                                                                                \
            (size_t)PROC_INSTRUCTIONS[CMD].byte_code, (int64_t)(arg));                                   \
 } while(0)
 
-COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t command_bytecode, size_t argc, ...) {
+#define bytecode_add_and_log_1_frac(data, CMD, arg) do {                                                \
+    size_t pc = (data)->bytecode_size;                                                                  \
+    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_FRAC, (arg));                 \
+    char cmd_repr[64] = "";                                                                             \
+    unsigned char bytes[sizeof(double)] = "";                                                           \
+    memcpy(bytes, &arg, sizeof(double));                                                                \
+    snprintf(cmd_repr, sizeof(cmd_repr), "%s %lg", #CMD, (arg));                                        \
+    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%x") "\n",          \
+           pc, cmd_repr,                                                                                \
+           (size_t)PROC_INSTRUCTIONS[CMD].byte_code, bytes);                                            \
+} while(0)
+
+enum arg_type_t {
+    ARG_INT,
+    ARG_FRAC,
+};
+
+COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, size_t command_bytecode, size_t argc, ...) {
     assert(data);
     assert(data->bytecode);
 
@@ -84,7 +101,7 @@ COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t comma
     size_t required_space = 1 + argc;
     if (data->bytecode_size + required_space > data->bytecode_capacity) {
         size_t new_capacity = data->bytecode_capacity * 2;
-        ssize_t * new_bytecode = (ssize_t *) realloc(data->bytecode, new_capacity * sizeof(data->bytecode[0]));
+        bytecode_t * new_bytecode = (bytecode_t *) realloc(data->bytecode, new_capacity * sizeof(data->bytecode[0]));
 
         if (new_bytecode == NULL) {
             return COMPILER_ERRNO::COMPILER_CANNOT_REALLOCATE_MEMORY;
@@ -93,13 +110,23 @@ COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, ssize_t comma
         data->bytecode_capacity = new_capacity;
     }
 
-    data->bytecode[data->bytecode_size++] = command_bytecode;
+    data->bytecode[data->bytecode_size++].cmd = command_bytecode;
 
     if (argc > 0) {
         va_list args;
         va_start(args, argc);
+
         for (size_t i = 0; i < argc; ++i) {
-            data->bytecode[data->bytecode_size++] = va_arg(args, ssize_t);
+            arg_type_t type = va_arg(args, arg_type_t);
+
+            if (type == ARG_INT) {
+                data->bytecode[data->bytecode_size++].cmd = va_arg(args, ssize_t);
+            } else if (type == ARG_FRAC) {
+                data->bytecode[data->bytecode_size++].arg = va_arg(args, double);
+            } else {
+                va_end(args);
+                return COMPILER_ERRNO::COMPILER_INVALID_ARG_TYPE;
+            }
         }
         va_end(args);
     }
@@ -150,6 +177,8 @@ COMPILER_ERRNO add_label(compiler_internal_data * data, char * name, size_t new_
 COMPILER_ERRNO compile(compiler_internal_data * data) {
     char * line = data->input_text;
     while (line < data->input_text + data->input_text_len) {
+        move_ptr_to_first_not_space_symbol(&line, false);
+        // printf("\tline is [%s]\n", line);
         char * space = strchr(line, ' ');
         char * cmd = line;
         char * arg = NULL;
@@ -181,7 +210,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
                     break;
                 }
 
-                bytecode_add_and_log_1(data, PUSH, value);
+                bytecode_add_and_log_1_frac(data, PUSH, value);
 
                 token = endptr;
             }
@@ -193,7 +222,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
                 break;
             }
 
-            bytecode_add_and_log_1(data, PUSHR, register_number);
+            bytecode_add_and_log_1_int(data, PUSHR, register_number);
 
         } else if (comp_to(cmd, PROC_INSTRUCTIONS[POPR].name, ' ') == 0) {
             size_t register_number = get_register_by_name(arg);
@@ -202,8 +231,35 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
                 break;
             }
 
-            bytecode_add_and_log_1(data, POPR, register_number);
+            bytecode_add_and_log_1_int(data, POPR, register_number);
+        } else if (comp_to(cmd, PROC_INSTRUCTIONS[CALL].name, ' ') == 0) {                                    \
+            if (*arg == ':') {                                                                              \
+                label_t label = {};                                                                         \
+                COMPILER_ERRNO status = get_label(data, arg + 1, &label);                                   \
+                ssize_t new_pc = -1;                                                                        \
+                                                                                                            \
+                if (status == COMPILER_ERRNO::COMPILER_NO_PROBLEM)                                          \
+                    new_pc = label.program_counter;                                                         \
+                else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)                                  \
+                    return status;                                                                          \
+                                                                                                            \
+                bytecode_add_and_log_1_int(data, CALL, new_pc);                                                 \
+            }                                                                                               \
+            else {                                                                                          \
+                char * endptr = NULL;                                                                       \
+                errno = 0;                                                                                  \
+                                                                                                            \
+                size_t new_program_counter = strtoull(arg, &endptr, 10);                                    \
+                                                                                                            \
+                if (errno == ERANGE || endptr == arg) {                                                     \
+                    ERROR_MSG("Не удалось получить новый PC из аргументов (%s)", arg);                      \
+                    break;                                                                                  \
+                }                                                                                           \
+                                                                                                            \
+                bytecode_add_and_log_1_int(data, CALL, new_program_counter);                                    \
+            }                                                                                               \
         }
+
         conditional_jmp_body_return_if_err(data, JMP)
         conditional_jmp_body_return_if_err(data, JB)
         conditional_jmp_body_return_if_err(data, JBE)
@@ -222,6 +278,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         no_args_proc_instruct_body(data, IDIV)
         no_args_proc_instruct_body(data, OUT)
         no_args_proc_instruct_body(data, IN)
+        no_args_proc_instruct_body(data, RET)
         no_args_proc_instruct_body(data, HLT)
 
         line += (strlen(line) + 1);
@@ -312,8 +369,9 @@ int main(int argc, char * argv[]) {
 
     if (data.labels_size > 1) {
         printf(BOLD(BRIGHT_WHITE("Labels:\n")));
+        printf(BRIGHT_BLACK("\t%-30s new_pc\n"), "name");
         for (size_t i = 0; i < data.labels_size; ++i) {
-            printf("[%zu] name is %-10s, new_ps is %zd\n", i, data.labels[i].name, data.labels[i].program_counter);
+            printf("[%zu]\t%-30s %zd\n", i, data.labels[i].name, data.labels[i].program_counter);
         }
 
         printf(BOLD(BRIGHT_WHITE("Второй проход:\n")));
@@ -331,9 +389,9 @@ int main(int argc, char * argv[]) {
         printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
     }
 
-    data.bytecode[0] = PROC_SIGNATURE;
-    data.bytecode[1] = PROC_COMANDS_VERSION;
-    data.bytecode[2] = data.bytecode_size;
+    data.bytecode[0].cmd = PROC_SIGNATURE;
+    data.bytecode[1].cmd = PROC_COMANDS_VERSION;
+    data.bytecode[2].cmd = data.bytecode_size;
 
     FILE *out = fopen(data.output_file, "wb");
     if (!out) {
