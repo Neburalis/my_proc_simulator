@@ -22,7 +22,7 @@ using namespace mystr;
 #undef FREE
 #define FREE(ptr) do {free((ptr)); (ptr) = NULL;} while(0)
 
-#define conditional_jmp_body_return_if_err(data, TYPE)                                                  \
+#define CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, TYPE)                                                  \
     else if (comp_to(cmd, PROC_INSTRUCTIONS[TYPE].name, ' ') == 0) {                                    \
         if (*arg == ':') {                                                                              \
             label_t label = {};                                                                         \
@@ -34,7 +34,7 @@ using namespace mystr;
             else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)                                  \
                 return status;                                                                          \
                                                                                                         \
-            bytecode_add_and_log_1_int(data, TYPE, new_pc);                                             \
+            BYTECODE_ADD_AND_LOG_1_INT(data, TYPE, new_pc);                                             \
         }                                                                                               \
         else {                                                                                          \
             char * endptr = NULL;                                                                       \
@@ -47,23 +47,50 @@ using namespace mystr;
                 break;                                                                                  \
             }                                                                                           \
                                                                                                         \
-            bytecode_add_and_log_1_int(data, TYPE, new_program_counter);                                \
+            BYTECODE_ADD_AND_LOG_1_INT(data, TYPE, new_program_counter);                                \
         }                                                                                               \
     }
 
-#define no_args_proc_instruct_body(data, INSTRUCT)                                                      \
-    else if (comp_to(cmd, PROC_INSTRUCTIONS[INSTRUCT].name, ' ') == 0) {                                \
-        bytecode_add_and_log_0(data, INSTRUCT);                                                         \
+#define MEMORY_ACCESS_PROC_INSTRUCT_RETURN_IF_ERR(data, TYPE)                                           \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[TYPE].name, ' ') == 0) {                                    \
+        if (*arg != '[') {                                                                              \
+            ERROR_MSG("Неверно передан аргумент в " #TYPE ": %s\n"                                      \
+                "Ожидалась [, а было получено %c\n", arg, *arg);                                        \
+            return COMPILER_WRONG_INSTRUCTION_USING;                                                    \
+        }                                                                                               \
+                                                                                                        \
+        char * copy_of_arg = strdup(arg);                                                               \
+        char * end = copy_of_arg + strlen(copy_of_arg) - 1;                                             \
+        move_ptr_to_first_alpha_symbol(&end, true);                                                     \
+        end++;                                                                                          \
+                                                                                                        \
+        if (*end != ']') {                                                                              \
+            ERROR_MSG("Неверно передан аргумент в " #TYPE ": %s\n"                                      \
+                "Ожидалась ], а было получено (%c) %d\n", arg, *end, *end);                             \
+            FREE(copy_of_arg);                                                                          \
+            return COMPILER_WRONG_INSTRUCTION_USING;                                                    \
+        }                                                                                               \
+        *end = '\0';                                                                                    \
+                                                                                                        \
+        size_t register_number = get_register_by_name(copy_of_arg + 1);                                 \
+        FREE(copy_of_arg);                                                                              \
+                                                                                                        \
+        BYTECODE_ADD_AND_LOG_1_INT(data, TYPE, register_number);                                        \
     }
 
-#define bytecode_add_and_log_0(data, CMD) do {                                                          \
+#define NO_ARGS_PROC_INSTRUCT_BODY(data, INSTRUCT)                                                      \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[INSTRUCT].name, ' ') == 0) {                                \
+        BYTECODE_ADD_AND_LOG_0(data, INSTRUCT);                                                         \
+    }
+
+#define BYTECODE_ADD_AND_LOG_0(data, CMD) do {                                                          \
     size_t pc = (data)->bytecode_size;                                                                  \
     bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 0);                                  \
     printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") "\n",                         \
            pc, #CMD, (size_t)PROC_INSTRUCTIONS[CMD].byte_code);                                         \
 } while (0)
 
-#define bytecode_add_and_log_1_int(data, CMD, arg) do {                                                 \
+#define BYTECODE_ADD_AND_LOG_1_INT(data, CMD, arg) do {                                                 \
     size_t pc = (data)->bytecode_size;                                                                  \
     bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_INT, (arg));                  \
     char cmd_repr[64] = "";                                                                             \
@@ -73,7 +100,7 @@ using namespace mystr;
            (size_t)PROC_INSTRUCTIONS[CMD].byte_code, (int64_t)(arg));                                   \
 } while(0)
 
-#define bytecode_add_and_log_1_frac(data, CMD, arg) do {                                                \
+#define BYTECODE_ADD_AND_LOG_1_FRAC(data, CMD, arg) do {                                                \
     size_t pc = (data)->bytecode_size;                                                                  \
     bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_FRAC, (arg));                 \
     char cmd_repr[64] = "";                                                                             \
@@ -134,7 +161,7 @@ COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, size_t comman
     return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
 }
 
-#define print_labels(data) \
+#define PRINT_LABELS(data) \
     printf(BRIGHT_BLACK("Running from %s:%d in func %s\n"), __FILE__, __LINE__, __PRETTY_FUNCTION__); \
     print_labels_impl(data);
 
@@ -192,7 +219,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         } else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSH].name, ' ') == 0) {
             if (arg == NULL) {
                 ERROR_MSG("Команде PUSH было передано аргументов 0, а должно быть хотя бы 1");
-                break;
+                return COMPILER_WRONG_INSTRUCTION_USING;
             }
 
             char * token = arg;
@@ -207,10 +234,10 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
                 if (errno != 0 || token == endptr) {
                     ERROR_MSG("Неверный числовой аргумент в PUSH: %s", token);
-                    break;
+                    return COMPILER_WRONG_INSTRUCTION_USING;
                 }
 
-                bytecode_add_and_log_1_frac(data, PUSH, value);
+                BYTECODE_ADD_AND_LOG_1_FRAC(data, PUSH, value);
 
                 token = endptr;
             }
@@ -219,67 +246,69 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
             if (register_number > REGISTERS_COUNT) {
                 ERROR_MSG("Неверный регистр в PUSHR: %zu", register_number);
-                break;
+                return COMPILER_WRONG_INSTRUCTION_USING;
             }
 
-            bytecode_add_and_log_1_int(data, PUSHR, register_number);
+            BYTECODE_ADD_AND_LOG_1_INT(data, PUSHR, register_number);
 
         } else if (comp_to(cmd, PROC_INSTRUCTIONS[POPR].name, ' ') == 0) {
             size_t register_number = get_register_by_name(arg);
             if (register_number > REGISTERS_COUNT) {
                 ERROR_MSG("Неверный регистр в POPR: %zu", register_number);
-                break;
+                return COMPILER_WRONG_INSTRUCTION_USING;
             }
 
-            bytecode_add_and_log_1_int(data, POPR, register_number);
-        } else if (comp_to(cmd, PROC_INSTRUCTIONS[CALL].name, ' ') == 0) {                                    \
-            if (*arg == ':') {                                                                              \
-                label_t label = {};                                                                         \
-                COMPILER_ERRNO status = get_label(data, arg + 1, &label);                                   \
-                ssize_t new_pc = -1;                                                                        \
-                                                                                                            \
-                if (status == COMPILER_ERRNO::COMPILER_NO_PROBLEM)                                          \
-                    new_pc = label.program_counter;                                                         \
-                else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)                                  \
-                    return status;                                                                          \
-                                                                                                            \
-                bytecode_add_and_log_1_int(data, CALL, new_pc);                                                 \
-            }                                                                                               \
-            else {                                                                                          \
-                char * endptr = NULL;                                                                       \
-                errno = 0;                                                                                  \
-                                                                                                            \
-                size_t new_program_counter = strtoull(arg, &endptr, 10);                                    \
-                                                                                                            \
-                if (errno == ERANGE || endptr == arg) {                                                     \
-                    ERROR_MSG("Не удалось получить новый PC из аргументов (%s)", arg);                      \
-                    break;                                                                                  \
-                }                                                                                           \
-                                                                                                            \
-                bytecode_add_and_log_1_int(data, CALL, new_program_counter);                                    \
-            }                                                                                               \
-        }
+            BYTECODE_ADD_AND_LOG_1_INT(data, POPR, register_number);
+        } else if (comp_to(cmd, PROC_INSTRUCTIONS[CALL].name, ' ') == 0) {
+            if (*arg == ':') {
+                label_t label = {};
+                COMPILER_ERRNO status = get_label(data, arg + 1, &label);
+                ssize_t new_pc = -1;
 
-        conditional_jmp_body_return_if_err(data, JMP)
-        conditional_jmp_body_return_if_err(data, JB)
-        conditional_jmp_body_return_if_err(data, JBE)
-        conditional_jmp_body_return_if_err(data, JA)
-        conditional_jmp_body_return_if_err(data, JAE)
-        conditional_jmp_body_return_if_err(data, JE)
-        conditional_jmp_body_return_if_err(data, JNE)
-        no_args_proc_instruct_body(data, ADD)
-        no_args_proc_instruct_body(data, SUB)
-        no_args_proc_instruct_body(data, MUL)
-        no_args_proc_instruct_body(data, DIV)
-        no_args_proc_instruct_body(data, SQRT)
-        no_args_proc_instruct_body(data, SIN)
-        no_args_proc_instruct_body(data, COS)
-        no_args_proc_instruct_body(data, MOD)
-        no_args_proc_instruct_body(data, IDIV)
-        no_args_proc_instruct_body(data, OUT)
-        no_args_proc_instruct_body(data, IN)
-        no_args_proc_instruct_body(data, RET)
-        no_args_proc_instruct_body(data, HLT)
+                if (status == COMPILER_ERRNO::COMPILER_NO_PROBLEM)
+                    new_pc = label.program_counter;
+                else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)
+                    return status;
+
+                BYTECODE_ADD_AND_LOG_1_INT(data, CALL, new_pc);
+            }
+            else {
+                char * endptr = NULL;
+                errno = 0;
+
+                size_t new_program_counter = strtoull(arg, &endptr, 10);
+
+                if (errno == ERANGE || endptr == arg) {
+                    ERROR_MSG("Не удалось получить новый PC из аргументов (%s)", arg);
+                    return COMPILER_WRONG_INSTRUCTION_USING;
+                }
+
+                BYTECODE_ADD_AND_LOG_1_INT(data, CALL, new_program_counter);
+            }
+        }
+        MEMORY_ACCESS_PROC_INSTRUCT_RETURN_IF_ERR(data, PUSHM)
+        MEMORY_ACCESS_PROC_INSTRUCT_RETURN_IF_ERR(data, POPM)
+        CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JMP)
+        CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JB)
+        CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JBE)
+        CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JA)
+        CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JAE)
+        CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JE)
+        CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JNE)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, ADD)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, SUB)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, MUL)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, DIV)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, SQRT)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, SIN)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, COS)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, MOD)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, IDIV)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, OUT)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, IN)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, DRAW)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, RET)
+        NO_ARGS_PROC_INSTRUCT_BODY(data, HLT)
 
         line += (strlen(line) + 1);
     }
@@ -331,7 +360,7 @@ int parse_args(int argc, char * argv[], char ** output_file, char * input_files[
 }
 
 int main(int argc, char * argv[]) {
-    init_compiler_internal_data(data);
+    INIT_COMPILER_INTERNAL_DATA(data);
 
     data.input_files_count = parse_args(argc, argv, &data.output_file, data.input_files);
 

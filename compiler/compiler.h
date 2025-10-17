@@ -20,6 +20,7 @@ enum COMPILER_ERRNO {
     COMPILER_NO_SUCH_LABEL            = 4,
     COMPILER_LABEL_ALREADY_EXIST      = 5,
     COMPILER_INVALID_ARG_TYPE         = 6,
+    COMPILER_WRONG_INSTRUCTION_USING  = 7,
 };
 
 struct label_t {
@@ -46,7 +47,7 @@ typedef struct {
 } compiler_internal_data;
 
 // Макрос для инициализации структуры данных компилятора
-#define init_compiler_internal_data(NAME)                                   \
+#define INIT_COMPILER_INTERNAL_DATA(NAME)                                   \
     compiler_internal_data NAME = {};                                       \
     NAME.bytecode_capacity = 1024;                                          \
     NAME.bytecode_size = BYTECODE_SIGNATURE_SIZE;                           \
