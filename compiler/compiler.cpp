@@ -20,6 +20,11 @@ using namespace mystr;
 #undef FREE
 #define FREE(ptr) do {free((ptr)); (ptr) = NULL;} while(0)
 
+#define OK(cond) !(cond)
+
+#define verified(code) \
+    || ({code; false;})
+
 #define CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, TYPE)                                                  \
     else if (comp_to(cmd, PROC_INSTRUCTIONS[TYPE].name, ' ') == 0) {                                    \
         if (*arg == ':') {                                                                              \
@@ -29,8 +34,10 @@ using namespace mystr;
                                                                                                         \
             if (status == COMPILER_ERRNO::COMPILER_NO_PROBLEM)                                          \
                 new_pc = label.program_counter;                                                         \
-            else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)                                  \
+            else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL){                                 \
+                data->compile_status = status;                                                           \
                 return status;                                                                          \
+            }                                                                                           \
                                                                                                         \
             BYTECODE_ADD_AND_LOG_1_INT(data, TYPE, new_pc);                                             \
         }                                                                                               \
@@ -54,6 +61,7 @@ using namespace mystr;
         if (*arg != '[') {                                                                              \
             ERROR_MSG("Неверно передан аргумент в " #TYPE ": %s\n"                                      \
                 "Ожидалась [, а было получено %c\n", arg, *arg);                                        \
+            data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;                                     \
             return COMPILER_WRONG_INSTRUCTION_USING;                                                    \
         }                                                                                               \
                                                                                                         \
@@ -66,6 +74,7 @@ using namespace mystr;
             ERROR_MSG("Неверно передан аргумент в " #TYPE ": %s\n"                                      \
                 "Ожидалась ], а было получено (%c) %d\n", arg, *end, *end);                             \
             FREE(copy_of_arg);                                                                          \
+            data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;                                     \
             return COMPILER_WRONG_INSTRUCTION_USING;                                                    \
         }                                                                                               \
         *end = '\0';                                                                                    \
@@ -138,6 +147,7 @@ COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, size_t comman
     assert(data->bytecode);
 
     if (data == NULL || data->bytecode == NULL) {
+        data->compile_status = COMPILER_PROVIDE_NULLPTR;
         return COMPILER_ERRNO::COMPILER_PROVIDE_NULLPTR;
     }
 
@@ -147,6 +157,7 @@ COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, size_t comman
         bytecode_t * new_bytecode = (bytecode_t *) realloc(data->bytecode, new_capacity * sizeof(data->bytecode[0]));
 
         if (new_bytecode == NULL) {
+            data->compile_status = COMPILER_CANNOT_REALLOCATE_MEMORY;
             return COMPILER_ERRNO::COMPILER_CANNOT_REALLOCATE_MEMORY;
         }
         data->bytecode = new_bytecode;
@@ -168,12 +179,14 @@ COMPILER_ERRNO bytecode_add_command(compiler_internal_data * data, size_t comman
                 data->bytecode[data->bytecode_size++].arg = va_arg(args, double);
             } else {
                 va_end(args);
+                data->compile_status = COMPILER_INVALID_ARG_TYPE;
                 return COMPILER_ERRNO::COMPILER_INVALID_ARG_TYPE;
             }
         }
         va_end(args);
     }
 
+    data->compile_status = COMPILER_NO_PROBLEM;
     return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
 }
 
@@ -194,26 +207,33 @@ COMPILER_ERRNO get_label(compiler_internal_data * data, char * name, label_t * l
         if (strcmp(name, data->labels[i].name) == 0) {
             if (label != NULL)
                 *label = data->labels[i];
+            data->compile_status = COMPILER_NO_PROBLEM;
             return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
         }
     }
+    data->compile_status = COMPILER_NO_SUCH_LABEL;
     return COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL;
 }
 
 COMPILER_ERRNO add_label(compiler_internal_data * data, char * name, size_t new_pc) {
-    if (get_label(data, name, NULL) != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)
+    if (get_label(data, name, NULL) != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL) {
+        data->compile_status = COMPILER_LABEL_ALREADY_EXIST;
         return COMPILER_ERRNO::COMPILER_LABEL_ALREADY_EXIST;
+    }
 
     if (data->labels_size >= data->labels_capacity) {
         size_t new_labels_capacity = data->labels_capacity * 2;
         label_t * new_labels = (label_t *) realloc(data->labels, new_labels_capacity * sizeof(data->labels[0]));
-        if (new_labels == NULL)
+        if (new_labels == NULL) {
+            data->compile_status = COMPILER_CANNOT_REALLOCATE_MEMORY;
             return COMPILER_ERRNO::COMPILER_CANNOT_REALLOCATE_MEMORY;
+        }
         data->labels_capacity = new_labels_capacity;
         data->labels = new_labels;
     }
 
     data->labels[data->labels_size++] = {.name = name, .program_counter = new_pc};
+    data->compile_status = COMPILER_NO_PROBLEM;
     return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
 }
 
@@ -235,6 +255,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         } else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSH].name, ' ') == 0) {
             if (arg == NULL) {
                 ERROR_MSG("Команде PUSH было передано аргументов 0, а должно быть хотя бы 1");
+                data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
                 return COMPILER_WRONG_INSTRUCTION_USING;
             }
 
@@ -250,6 +271,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
                 if (errno != 0 || token == endptr) {
                     ERROR_MSG("Неверный числовой аргумент в PUSH: %s", token);
+                    data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
                     return COMPILER_WRONG_INSTRUCTION_USING;
                 }
 
@@ -262,6 +284,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
             if (register_number > REGISTERS_COUNT) {
                 ERROR_MSG("Неверный регистр в PUSHR: %zu", register_number);
+                data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
                 return COMPILER_WRONG_INSTRUCTION_USING;
             }
 
@@ -271,6 +294,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
             size_t register_number = get_register_by_name(arg);
             if (register_number > REGISTERS_COUNT) {
                 ERROR_MSG("Неверный регистр в POPR: %zu", register_number);
+                data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
                 return COMPILER_WRONG_INSTRUCTION_USING;
             }
 
@@ -283,8 +307,10 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
                 if (status == COMPILER_ERRNO::COMPILER_NO_PROBLEM)
                     new_pc = label.program_counter;
-                else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL)
+                else if (status != COMPILER_ERRNO::COMPILER_NO_SUCH_LABEL) {
+                    data->compile_status = status;
                     return status;
+                }
 
                 BYTECODE_ADD_AND_LOG_1_INT(data, CALL, new_pc);
             }
@@ -296,6 +322,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
                 if (errno == ERANGE || endptr == arg) {
                     ERROR_MSG("Не удалось получить новый PC из аргументов (%s)", arg);
+                    data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
                     return COMPILER_WRONG_INSTRUCTION_USING;
                 }
 
@@ -309,6 +336,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
             if (errno == ERANGE || endptr == arg) {
                 ERROR_MSG("Не удалось получить время сна из аргументов (%s)", arg);
+                data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
                 return COMPILER_WRONG_INSTRUCTION_USING;
             }
 
@@ -336,9 +364,14 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         NO_ARGS_PROC_INSTRUCT_BODY(data, IN)
         NO_ARGS_PROC_INSTRUCT_BODY(data, RET)
         NO_ARGS_PROC_INSTRUCT_BODY(data, HLT)
+        else {
+            data->compile_status = COMPILER_SYNTAX_ERROR;
+            return COMPILER_ERRNO::COMPILER_SYNTAX_ERROR;
+        }
 
         line += (strlen(line) + 1);
     }
+    data->compile_status = COMPILER_NO_PROBLEM;
     return COMPILER_ERRNO::COMPILER_NO_PROBLEM;
 }
 
@@ -421,6 +454,13 @@ int main(int argc, char * argv[]) {
 
     compile(&data); // Первый проход
 
+    if (data.compile_status != COMPILER_ERRNO::COMPILER_NO_PROBLEM) {
+        ERROR_MSG("Error in compilation: %d", data.compile_status);
+
+        dtor_compiler_internal_data(data);
+        return -1;
+    }
+
     printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
 
     if (data.labels_size > 1) {
@@ -441,6 +481,13 @@ int main(int argc, char * argv[]) {
         "BYTECODE");
 
         compile(&data); // Второй проход
+
+        if (data.compile_status != COMPILER_ERRNO::COMPILER_NO_PROBLEM) {
+            ERROR_MSG("Error in compilation: %d", data.compile_status);
+
+            dtor_compiler_internal_data(data);
+            return -1;
+        }
 
         printf(BRIGHT_BLACK("%s=\n"), mult("=+", 40));
     }

@@ -21,6 +21,7 @@ enum COMPILER_ERRNO {
     COMPILER_LABEL_ALREADY_EXIST      = 5,
     COMPILER_INVALID_ARG_TYPE         = 6,
     COMPILER_WRONG_INSTRUCTION_USING  = 7,
+    COMPILER_SYNTAX_ERROR             = 8,
 };
 
 struct label_t {
@@ -30,20 +31,22 @@ struct label_t {
 
 // Структура для внутренних данных компилятора
 typedef struct {
-    char *      input_files[MAX_INPUT_FILES];
-    int         input_files_count;
-    char *      output_file;
+    char *          input_files[MAX_INPUT_FILES];
+    int             input_files_count;
+    char *          output_file;
 
-    char *      input_text;
-    size_t      input_text_len;
+    char *          input_text;
+    size_t          input_text_len;
 
-    size_t      labels_capacity;
-    size_t      labels_size;
-    label_t *   labels;
+    size_t          labels_capacity;
+    size_t          labels_size;
+    label_t *       labels;
 
-    size_t      bytecode_capacity;
-    size_t      bytecode_size;
-    bytecode_t *   bytecode;
+    size_t          bytecode_capacity;
+    size_t          bytecode_size;
+    bytecode_t *    bytecode;
+
+    COMPILER_ERRNO  compile_status;
 } compiler_internal_data;
 
 // Макрос для инициализации структуры данных компилятора
