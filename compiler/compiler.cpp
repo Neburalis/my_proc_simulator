@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
 
 #define compilation
 #include "proc_commands.h"
@@ -447,6 +448,7 @@ int main(int argc, char * argv[]) {
     data.bytecode[0].cmd = PROC_SIGNATURE;
     data.bytecode[1].cmd = PROC_COMANDS_VERSION;
     data.bytecode[2].cmd = data.bytecode_size;
+    data.bytecode[3].cmd = (uint64_t) time(NULL);
 
     FILE *out = fopen(data.output_file, "wb");
     if (!out) {
