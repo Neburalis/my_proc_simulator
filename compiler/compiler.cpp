@@ -365,6 +365,13 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         NO_ARGS_PROC_INSTRUCT_BODY(data, RET)
         NO_ARGS_PROC_INSTRUCT_BODY(data, HLT)
         else {
+            if (*cmd == ';' || strlen(line) == 0) { // comment or empty
+                line += (strlen(line) + 1);
+                continue;
+            }
+
+            ERROR_MSG("Syntax error in (%s) len is %d\n", line, strlen(line));
+
             data->compile_status = COMPILER_SYNTAX_ERROR;
             return COMPILER_ERRNO::COMPILER_SYNTAX_ERROR;
         }
@@ -455,7 +462,7 @@ int main(int argc, char * argv[]) {
     compile(&data); // Первый проход
 
     if (data.compile_status != COMPILER_ERRNO::COMPILER_NO_PROBLEM) {
-        ERROR_MSG("Error in compilation: %d", data.compile_status);
+        ERROR_MSG("Error in compilation: %d\n", data.compile_status);
 
         dtor_compiler_internal_data(data);
         return -1;

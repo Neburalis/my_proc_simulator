@@ -384,7 +384,10 @@ MY_PROCESSOR_STATUS execute_OUT(my_spu * proc) {
 MY_PROCESSOR_STATUS execute_IN(my_spu * proc) {
     DEBUG_PRINT(BRIGHT_BLACK("Command is IN\n"));
     bytecode_t value = {.arg = NAN};
+    printf("Введите число: ");
+    fflush(stdout);
     scanf("%lg", &(value.arg));
+    printf("\n");
     getchar();
     // printf("Parsed value is [%lg]\n", value);
     StackPush(proc->stk, value);
@@ -568,15 +571,17 @@ int main(int argc, char * argv[]) {
     }
 
     my_spu * proc = NULL;
-    printf("status is %d\n", my_processor_init(&proc));
-    printf("%p\n", proc);
+    my_processor_init(&proc);
+    // printf("status is %d\n", my_processor_init(&proc));
+    // printf("%p\n", proc);
 
     if (buf[0].cmd != PROC_SIGNATURE) {
         ERROR_MSG("the file is not a processor executable");
         return 1;
     }
 
-    if (buf[1].cmd != PROC_COMANDS_VERSION) {
+    if (buf[1].cmd != PROC_COMANDS_VERSION)
+    {
         ERROR_MSG("the file is an executable file of a different version of the processor");
         return 2;
     }
@@ -596,6 +601,7 @@ int main(int argc, char * argv[]) {
 
     my_processor_destroy(&proc);
     free(buf);
+    PAUSE_ANY_KEY(BRIGHT_BLACK("Нажмите любую клавишу для выхода ...\n"));
     TERMINAL_EXIT_ALT_SCREEN();
     return 0;
 }
