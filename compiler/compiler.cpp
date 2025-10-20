@@ -1,3 +1,5 @@
+#undef _DEBUG
+
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
@@ -5,17 +7,12 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-#define _DEBUG
-#define tolerance_lvl 3
-
 #define compilation
 #include "proc_commands.h"
 #include "compiler.h"
 
 #include "io_utils.h"
 #include "stringNthong.h"
-#include "stack_errno.h"
-#include "stack.h"
 
 using namespace mystr;
 
@@ -83,34 +80,52 @@ using namespace mystr;
         BYTECODE_ADD_AND_LOG_0(data, INSTRUCT);                                                         \
     }
 
-#define BYTECODE_ADD_AND_LOG_0(data, CMD) do {                                                          \
-    size_t pc = (data)->bytecode_size;                                                                  \
-    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 0);                                  \
-    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") "\n",                         \
-           pc, #CMD, (size_t)PROC_INSTRUCTIONS[CMD].byte_code);                                         \
-} while (0)
+#ifdef _DEBUG
+    #define BYTECODE_ADD_AND_LOG_0(data, CMD) do {                                                          \
+        size_t pc = (data)->bytecode_size;                                                                  \
+        bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 0);                                  \
+        printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") "\n",                         \
+            pc, #CMD, (size_t)PROC_INSTRUCTIONS[CMD].byte_code);                                            \
+    } while (0)
+#else
+    #define BYTECODE_ADD_AND_LOG_0(data, CMD) do {                                                          \
+        bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 0);                                  \
+    } while (0)
+#endif
 
-#define BYTECODE_ADD_AND_LOG_1_INT(data, CMD, arg) do {                                                 \
-    size_t pc = (data)->bytecode_size;                                                                  \
-    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_INT, (arg));                  \
-    char cmd_repr[64] = "";                                                                             \
-    snprintf(cmd_repr, sizeof(cmd_repr), "%s %zd", #CMD, (arg));                                        \
-    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%016llx") "\n",     \
-           pc, cmd_repr,                                                                                \
-           (size_t)PROC_INSTRUCTIONS[CMD].byte_code, (int64_t)(arg));                                   \
-} while(0)
+#ifdef _DEBUG
+    #define BYTECODE_ADD_AND_LOG_1_INT(data, CMD, arg) do {                                                 \
+        bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_INT, (arg));                  \
+        size_t pc = (data)->bytecode_size;                                                                  \
+        char cmd_repr[64] = "";                                                                             \
+        snprintf(cmd_repr, sizeof(cmd_repr), "%s %zd", #CMD, (arg));                                        \
+        printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%016llx") "\n",     \
+            pc, cmd_repr,                                                                                   \
+            (size_t)PROC_INSTRUCTIONS[CMD].byte_code, (int64_t)(arg));                                      \
+    } while(0)
+#else
+    #define BYTECODE_ADD_AND_LOG_1_INT(data, CMD, arg) do {                                                 \
+        bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_INT, (arg));                  \
+    } while (0)
+#endif
 
-#define BYTECODE_ADD_AND_LOG_1_FRAC(data, CMD, arg) do {                                                \
-    size_t pc = (data)->bytecode_size;                                                                  \
-    bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_FRAC, (arg));                 \
-    char cmd_repr[64] = "";                                                                             \
-    unsigned char bytes[sizeof(double)] = "";                                                           \
-    memcpy(bytes, &arg, sizeof(double));                                                                \
-    snprintf(cmd_repr, sizeof(cmd_repr), "%s %lg", #CMD, (arg));                                        \
-    printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%x") "\n",          \
-           pc, cmd_repr,                                                                                \
-           (size_t)PROC_INSTRUCTIONS[CMD].byte_code, bytes);                                            \
-} while(0)
+#ifdef _DEBUG
+    #define BYTECODE_ADD_AND_LOG_1_FRAC(data, CMD, arg) do {                                                \
+        size_t pc = (data)->bytecode_size;                                                                  \
+        bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_FRAC, (arg));                 \
+        char cmd_repr[64] = "";                                                                             \
+        unsigned char bytes[sizeof(double)] = "";                                                           \
+        memcpy(bytes, &arg, sizeof(double));                                                                \
+        snprintf(cmd_repr, sizeof(cmd_repr), "%s %lg", #CMD, (arg));                                        \
+        printf(BRIGHT_BLACK("[%4zu]") "  " YELLOW("%-30s") "  " CYAN("%08zx") " " BLUE("%x") "\n",          \
+            pc, cmd_repr,                                                                                   \
+            (size_t)PROC_INSTRUCTIONS[CMD].byte_code, bytes);                                               \
+    } while(0)
+#else
+    #define BYTECODE_ADD_AND_LOG_1_FRAC(data, CMD, arg) do {                                                \
+        bytecode_add_command((data), PROC_INSTRUCTIONS[CMD].byte_code, 1, ARG_FRAC, (arg));                 \
+    } while(0)
+#endif
 
 enum arg_type_t {
     ARG_INT,
@@ -285,6 +300,18 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
                 BYTECODE_ADD_AND_LOG_1_INT(data, CALL, new_program_counter);
             }
+        } else if (comp_to(cmd, PROC_INSTRUCTIONS[DRAW].name, ' ') == 0) {
+            char * endptr = NULL;
+            errno = 0;
+
+            size_t sleep_time = strtoull(arg, &endptr, 10);
+
+            if (errno == ERANGE || endptr == arg) {
+                ERROR_MSG("Не удалось получить время сна из аргументов (%s)", arg);
+                return COMPILER_WRONG_INSTRUCTION_USING;
+            }
+
+           BYTECODE_ADD_AND_LOG_1_INT(data, DRAW, sleep_time);
         }
         MEMORY_ACCESS_PROC_INSTRUCT_RETURN_IF_ERR(data, PUSHM)
         MEMORY_ACCESS_PROC_INSTRUCT_RETURN_IF_ERR(data, POPM)
@@ -306,7 +333,6 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         NO_ARGS_PROC_INSTRUCT_BODY(data, IDIV)
         NO_ARGS_PROC_INSTRUCT_BODY(data, OUT)
         NO_ARGS_PROC_INSTRUCT_BODY(data, IN)
-        NO_ARGS_PROC_INSTRUCT_BODY(data, DRAW)
         NO_ARGS_PROC_INSTRUCT_BODY(data, RET)
         NO_ARGS_PROC_INSTRUCT_BODY(data, HLT)
 

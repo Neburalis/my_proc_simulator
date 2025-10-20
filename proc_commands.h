@@ -11,7 +11,7 @@
 
 const size_t  BYTECODE_SIGNATURE_SIZE = 3; // PROC_SIGNATURE, PROC_COMANDS_VERSION, COUNT OF BYTES IN BYTECODE
 const ssize_t PROC_SIGNATURE = 0x314D4953434F5250; // PROCSIM1
-const size_t  PROC_COMANDS_VERSION = 40;
+const size_t  PROC_COMANDS_VERSION = 43;
 
 struct proc_instruction_t {
     ssize_t                   byte_code;
@@ -51,7 +51,7 @@ const proc_instruction_t PROC_INSTRUCTIONS[COMMAND_SPACE_MAX] = {
 
     [OUT]   = {.byte_code = OUT     ct(, .name = "OUT"),    .byte_len = 1},
     [IN]    = {.byte_code = IN      ct(, .name = "IN"),     .byte_len = 1},
-    [DRAW]  = {.byte_code = DRAW    ct(, .name = "DRAW"),   .byte_len = 1},
+    [DRAW]  = {.byte_code = DRAW    ct(, .name = "DRAW"),   .byte_len = 2},
 
     [PUSHR] = {.byte_code = PUSHR   ct(, .name = "PUSHR"),  .byte_len = 2},
     [POPR]  = {.byte_code = POPR    ct(, .name = "POPR"),   .byte_len = 2},
