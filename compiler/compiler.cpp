@@ -85,6 +85,36 @@ using namespace mystr;
         BYTECODE_ADD_AND_LOG_1_INT(data, TYPE, register_number);                                        \
     }
 
+#define PUSH_INSTRUCT_RETURN_IF_ERR(data)                                                               \
+    else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSH].name, ' ') == 0) {                                    \
+        if (arg == NULL) {                                                                              \
+            ERROR_MSG("Команде PUSH было передано аргументов 0, а должно быть хотя бы 1");              \
+            data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;                                    \
+            return COMPILER_WRONG_INSTRUCTION_USING;                                                    \
+        }                                                                                               \
+                                                                                                        \
+        char * token = arg;                                                                             \
+        char * endptr = NULL;                                                                           \
+                                                                                                        \
+        while (*token != '\0') {                                                                        \
+            while (*token == ' ') token++;                                                              \
+            if (*token == '\0') break;                                                                  \
+                                                                                                        \
+            errno = 0;                                                                                  \
+            double value = strtod(token, &endptr);                                                      \
+                                                                                                        \
+            if (errno != 0 || token == endptr) {                                                        \
+                ERROR_MSG("Неверный числовой аргумент в PUSH: %s", token);                              \
+                data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;                                \
+                return COMPILER_WRONG_INSTRUCTION_USING;                                                \
+            }                                                                                           \
+                                                                                                        \
+            BYTECODE_ADD_AND_LOG_1_FRAC(data, PUSH, value);                                             \
+                                                                                                        \
+            token = endptr;                                                                             \
+        }                                                                                               \
+    }
+
 #define NO_ARGS_PROC_INSTRUCT_BODY(data, INSTRUCT)                                                      \
     else if (comp_to(cmd, PROC_INSTRUCTIONS[INSTRUCT].name, ' ') == 0) {                                \
         BYTECODE_ADD_AND_LOG_0(data, INSTRUCT);                                                         \
@@ -251,34 +281,6 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
         }
         if (*cmd == ':') { // label
             add_label(data, (cmd + 1), data->bytecode_size);
-
-        } else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSH].name, ' ') == 0) {
-            if (arg == NULL) {
-                ERROR_MSG("Команде PUSH было передано аргументов 0, а должно быть хотя бы 1");
-                data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
-                return COMPILER_WRONG_INSTRUCTION_USING;
-            }
-
-            char * token = arg;
-            char * endptr = NULL;
-
-            while (*token != '\0') {
-                while (*token == ' ') token++;
-                if (*token == '\0') break;
-
-                errno = 0;
-                double value = strtod(token, &endptr);
-
-                if (errno != 0 || token == endptr) {
-                    ERROR_MSG("Неверный числовой аргумент в PUSH: %s", token);
-                    data->compile_status = COMPILER_WRONG_INSTRUCTION_USING;
-                    return COMPILER_WRONG_INSTRUCTION_USING;
-                }
-
-                BYTECODE_ADD_AND_LOG_1_FRAC(data, PUSH, value);
-
-                token = endptr;
-            }
         } else if (comp_to(cmd, PROC_INSTRUCTIONS[PUSHR].name, ' ') == 0) {
             size_t register_number = get_register_by_name(arg);
 
@@ -342,6 +344,7 @@ COMPILER_ERRNO compile(compiler_internal_data * data) {
 
            BYTECODE_ADD_AND_LOG_1_INT(data, DRAW, sleep_time);
         }
+        PUSH_INSTRUCT_RETURN_IF_ERR(data)
         MEMORY_ACCESS_PROC_INSTRUCT_RETURN_IF_ERR(data, PUSHM)
         MEMORY_ACCESS_PROC_INSTRUCT_RETURN_IF_ERR(data, POPM)
         CONDITIONAL_JMP_BODY_RETURN_IF_ERR(data, JMP)
