@@ -9,10 +9,6 @@
 #define IF_COMPILER(...)
 #endif // compilation
 
-const size_t  BYTECODE_SIGNATURE_SIZE = 4; // PROC_SIGNATURE, PROC_COMANDS_VERSION, COUNT OF BYTES IN BYTECODE, assembly date
-const ssize_t PROC_SIGNATURE = 0x314D4953434F5250; // PROCSIM1
-const size_t  PROC_COMANDS_VERSION = 44;
-
 struct proc_instruction_t {
     ssize_t                   byte_code;
     IF_COMPILER(const char * const     name;)
