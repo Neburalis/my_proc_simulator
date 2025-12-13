@@ -4,6 +4,7 @@
 #include <math.h>
 
 #include "processor.h"
+#include "proc_commands.h"
 
 #include "executors.h"
 
@@ -38,7 +39,7 @@ MY_PROCESSOR_STATUS execute_PUSH(my_spu * proc) {
         var.arg = var2.arg opr var1.arg;                                                                \
         StackPush(proc->stk, var);                                                                      \
         proc->program_counter += PROC_INSTRUCTIONS[name].byte_len;                                      \
-        return MY_PROCESSOR_STATUS::PROC_OK;                                                                                 \
+        return MY_PROCESSOR_STATUS::PROC_OK;                                                            \
     }
 
 #define EXECUTE_MATH_H_FUNC_impl(name, func)                                                            \
@@ -49,7 +50,7 @@ MY_PROCESSOR_STATUS execute_PUSH(my_spu * proc) {
         new_var.arg = func(var.arg);                                                                    \
         StackPush(proc->stk, new_var);                                                                  \
         proc->program_counter += PROC_INSTRUCTIONS[name].byte_len;                                      \
-        return MY_PROCESSOR_STATUS::PROC_OK;                                                                                 \
+        return MY_PROCESSOR_STATUS::PROC_OK;                                                            \
     }
 
 EXECUTE_MATH_OPR_impl(ADD, +)
@@ -87,17 +88,15 @@ MY_PROCESSOR_STATUS execute_DRAW(my_spu * proc) {
     TERMINAL_CLEAR_SCREEN();
     DEBUG_PRINT(BRIGHT_BLACK("Command is DRAW"));
 
-    char * ram = proc->ram;
-
     size_t sleep_time = proc->bytecode[proc->program_counter + 1].cmd;
 
     for (size_t i = 0; i < RAM_SIZE; ++i) {
         if (i % DRAW_LINE_WIDTH == 0)
             printf("\n");
-        if (ram[i] == '\0')
+        if (proc->ram[i] == 0.0)
             printf("%c ", ' ');
         else
-            printf("%c ", ram[i]);
+            printf("%c ", (char) proc->ram[i]);
     }
     printf("\n");
 
@@ -155,7 +154,6 @@ MY_PROCESSOR_STATUS execute_PUSHR(my_spu * proc) {
     StackPush(proc->stk, value);
 
     proc->program_counter += PROC_INSTRUCTIONS[PUSHR].byte_len;
-
     return MY_PROCESSOR_STATUS::PROC_OK;
 }
 
@@ -183,7 +181,6 @@ MY_PROCESSOR_STATUS execute_POPR(my_spu * proc) {
     DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), value);
 
     proc->program_counter += PROC_INSTRUCTIONS[POPR].byte_len;
-
     return MY_PROCESSOR_STATUS::PROC_OK;
 }
 
@@ -214,7 +211,7 @@ MY_PROCESSOR_STATUS execute_PUSHM(my_spu * proc) {
     bytecode_t value = {.arg = NAN};
     value.arg = proc->ram[index.cmd];
 
-    DEBUG_PRINT(BRIGHT_BLACK("value is %c\n"), proc->ram[index.cmd]);
+    DEBUG_PRINT(BRIGHT_BLACK("value is %lg\n"), proc->ram[index.cmd]);
 
     StackPush(proc->stk, value);
     proc->program_counter += PROC_INSTRUCTIONS[PUSHM].byte_len;
@@ -248,9 +245,9 @@ MY_PROCESSOR_STATUS execute_POPM(my_spu * proc) {
     bytecode_t value = {.arg = NAN};
     StackPop(proc->stk, &value);
 
-    DEBUG_PRINT(BRIGHT_BLACK("value is (%c) [%zu]\n"), (char) value.arg, (char) value.arg);
+    DEBUG_PRINT(BRIGHT_BLACK("value is (%lg)\n"), value.arg);
 
-    proc->ram[index.cmd] = (char) value.arg;
+    proc->ram[index.cmd] = value.arg;
     proc->program_counter += PROC_INSTRUCTIONS[POPM].byte_len;
     return MY_PROCESSOR_STATUS::PROC_OK;
 }

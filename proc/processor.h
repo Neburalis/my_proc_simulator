@@ -6,8 +6,6 @@
 
 #include <stddef.h>
 
-#include "proc_commands.h"
-
 const size_t  BYTECODE_SIGNATURE_SIZE = 4; // PROC_SIGNATURE, PROC_COMANDS_VERSION, COUNT OF BYTES IN BYTECODE, assembly date
 const ssize_t PROC_SIGNATURE = 0x314D4953434F5250; // PROCSIM1
 const size_t  PROC_COMANDS_VERSION = 44;
@@ -26,6 +24,12 @@ stack_element_t typedef bytecode_t;
 const size_t RAM_SIZE        = 1024;
 const size_t DRAW_LINE_WIDTH = 32;
 
+const int REGISTERS_COUNT = 9;
+
+enum REGISTERS_NAMES {
+    REG_RAX = 1, REG_RBX, REG_RCX, REG_RDX, REG_RTX, REG_DED, REG_INSIDE, REG_CURVA,
+};
+
 struct my_spu {
     StackHandler stk;
     double registers[REGISTERS_COUNT];
@@ -36,11 +40,9 @@ struct my_spu {
 
     StackHandler call_stack;
 
-    char ram[RAM_SIZE];
+    double ram[RAM_SIZE];
 
     MY_PROCESSOR_STATUS status;
 };
-
-typedef MY_PROCESSOR_STATUS (*executor_t)(my_spu *proc);
 
 #endif // PROCESSOR_H

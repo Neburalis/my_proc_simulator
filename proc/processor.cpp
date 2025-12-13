@@ -32,39 +32,6 @@ using namespace mystr;
         /*my_processor_dump(var_name);*/                    \
     }
 
-#define Add_command_executor(NAME) \
-    [NAME] = execute_##NAME
-
-const executor_t EXECUTORS[COMMAND_SPACE_MAX] = {
-    Add_command_executor(HLT),
-    Add_command_executor(PUSH),
-    Add_command_executor(ADD),
-    Add_command_executor(SUB),
-    Add_command_executor(MUL),
-    Add_command_executor(DIV),
-    Add_command_executor(SQRT),
-    Add_command_executor(SIN),
-    Add_command_executor(COS),
-    Add_command_executor(MOD),
-    Add_command_executor(IDIV),
-    Add_command_executor(OUT),
-    Add_command_executor(IN),
-    Add_command_executor(DRAW),
-    Add_command_executor(PUSHR),
-    Add_command_executor(POPR),
-    Add_command_executor(PUSHM),
-    Add_command_executor(POPM),
-    Add_command_executor(JMP),
-    Add_command_executor(JB),
-    Add_command_executor(JBE),
-    Add_command_executor(JA),
-    Add_command_executor(JAE),
-    Add_command_executor(JE),
-    Add_command_executor(JNE),
-    Add_command_executor(CALL),
-    Add_command_executor(RET),
-};
-
 MY_PROCESSOR_STATUS my_processor_init(my_spu ** proc) {
     my_spu * new_proc = (my_spu *) calloc(1, sizeof(my_spu));
     if (new_proc == NULL) {
@@ -226,19 +193,34 @@ MY_PROCESSOR_STATUS execute_bytecode(my_spu * proc) {
         // getchar();
         command = proc->bytecode[proc->program_counter].cmd;
 
-        const executor_t executor = EXECUTORS[command];
+        proc_instruction_t instruction = PROC_INSTRUCTIONS[command];
 
-        if (executor == NULL) {
+        if (instruction.byte_code == 0 || instruction.executor == NULL) {
             ERROR_MSG("Unknown command %zu\n", command);
             proc->status = PROC_ERR_INVALID_BYTECODE;
             break;
         }
 
-        executor(proc);
+        instruction.executor(proc);
     }
 
     Validate_processor_return_if_err(proc);
     return PROC_OK;
+}
+
+int verify_proc_instructions() {
+    for (ssize_t instruct_index = 0; instruct_index < COMMAND_SPACE_MAX; ++instruct_index) {
+        if (PROC_INSTRUCTIONS[instruct_index].byte_code == 0 || PROC_INSTRUCTIONS[instruct_index].byte_len == 0)
+            continue;
+        else if (PROC_INSTRUCTIONS[instruct_index].byte_code != instruct_index) {
+            ERROR_MSG("PROC_INSTRUCTIONS[%zu].byte_code is %zu must be %zu", instruct_index, PROC_INSTRUCTIONS[instruct_index].byte_code, instruct_index);
+            return 1;
+        } else if (PROC_INSTRUCTIONS[instruct_index].executor == NULL) {
+            ERROR_MSG("PROC_INSTRUCTIONS[%zu] has no executor", instruct_index);
+            return 2;
+        }
+    }
+    return 0;
 }
 
 int main(int argc, char * argv[]) {
